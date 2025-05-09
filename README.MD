@@ -1,6 +1,6 @@
-# 🚀 FastAPI Backend (with ML Support)
+# 🚀 NGI-Meeting-Transcription-Summarization-Platform   
 
-This is a lightweight FastAPI backend with optional machine learning integration. It uses a clean MVC-style structure for scalability and maintainability.
+NGI Meeting Transcription & Summarization Platform is a lightweight AI-powered SaaS tool designed for private associations to enhance meeting productivity by transcribing and summarizing recordings (Zoom, Teams, in-person audio), generating structured notes with agenda items, decisions, and action items, supporting multiple languages and platforms.
 
 ---
 

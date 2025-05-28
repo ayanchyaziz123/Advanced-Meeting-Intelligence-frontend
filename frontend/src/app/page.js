@@ -2,328 +2,243 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
+import { useSelector } from 'react-redux';
+import { selectIsAuthenticated } from '../redux/auth/authSlices'; // Adjust path as needed
 
-// Mock data for meetings with organization field and simplified status
-const MOCK_MEETINGS = [
+// Mock data for organizations
+const MOCK_ORGANIZATIONS = [
   {
     id: 1,
-    title: 'Weekly Team Standup',
-    date: '2025-05-08T10:00:00',
-    duration: '30 min',
-    participants: 8,
-    source: 'Zoom',
-    status: 'summarized',
-    organization: 'Engineering'
+    name: 'Next Generation Innovation L.L.C.',
+    logo: '/logo_ngi.avif',
+    meetingCount: 7
   },
   {
     id: 2,
-    title: 'Product Planning',
-    date: '2025-05-06T14:30:00',
-    duration: '60 min',
-    participants: 5,
-    source: 'Upload',
-    status: 'summarized',
-    organization: 'Product'
+    name: 'Freelance Designers Hub',
+    logo: '/logos/freelance_designers.png',
+    meetingCount: 5
   },
   {
     id: 3,
-    title: 'Client Onboarding',
-    date: '2025-05-05T11:00:00',
-    duration: '45 min',
-    participants: 3,
-    source: 'Zoom',
-    status: 'not summarized',
-    organization: 'Sales'
+    name: 'CodeCrafters Team',
+    logo: '/logos/codecrafters_team.png',
+    meetingCount: 11
   },
   {
     id: 4,
-    title: 'Marketing Strategy',
-    date: '2025-05-10T09:00:00',
-    duration: '60 min',
-    participants: 6,
-    source: 'Teams',
-    status: 'not summarized',
-    organization: 'Marketing'
+    name: 'Local Entrepreneurs Network',
+    logo: '/logos/local_entrepreneurs.png',
+    meetingCount: 6
   },
   {
     id: 5,
-    title: 'Sprint Review',
-    date: '2025-05-09T15:00:00',
-    duration: '45 min',
-    participants: 10,
-    source: 'Zoom',
-    status: 'summarized',
-    organization: 'Engineering'
+    name: 'TechBridge Community',
+    logo: '/logos/techbridge_community.png',
+    meetingCount: 8
+  },
+  {
+    id: 6,
+    name: 'Neighborhood Book Club',
+    logo: '/logos/book_club.png',
+    meetingCount: 4
   }
 ];
 
-// Get unique organizations for the filter dropdown
-const getUniqueOrganizations = (meetings) => {
-  const organizations = meetings.map(meeting => meeting.organization);
-  return ['All', ...new Set(organizations)];
-};
-
-export default function Dashboard() {
-  const [meetings, setMeetings] = useState(MOCK_MEETINGS);
-  const [searchTerm, setSearchTerm] = useState('');
-  const [organizationFilter, setOrganizationFilter] = useState('All');
-  const [statusFilter, setStatusFilter] = useState('All');
-  const [dateFilter, setDateFilter] = useState({
-    startDate: '',
-    endDate: ''
-  });
-
-  const uniqueOrganizations = getUniqueOrganizations(meetings);
-  const uniqueStatuses = ['All', 'summarized', 'not summarized'];
-  
-  const filteredMeetings = meetings.filter(meeting => {
-    // Text search filter
-    const matchesSearch = meeting.title.toLowerCase().includes(searchTerm.toLowerCase());
-    
-    // Organization filter
-    const matchesOrganization = organizationFilter === 'All' || meeting.organization === organizationFilter;
-    
-    // Status filter
-    const matchesStatus = statusFilter === 'All' || meeting.status === statusFilter;
-    
-    // Date filter
-    let matchesDate = true;
-    if (dateFilter.startDate) {
-      matchesDate = matchesDate && new Date(meeting.date) >= new Date(dateFilter.startDate);
-    }
-    if (dateFilter.endDate) {
-      // Add one day to end date for inclusive filtering
-      const endDate = new Date(dateFilter.endDate);
-      endDate.setDate(endDate.getDate() + 1);
-      matchesDate = matchesDate && new Date(meeting.date) < endDate;
-    }
-    
-    return matchesSearch && matchesOrganization && matchesStatus && matchesDate;
-  });
-
-  const handleDateFilterChange = (e) => {
-    const { name, value } = e.target;
-    setDateFilter(prev => ({
-      ...prev,
-      [name]: value
-    }));
-  };
-
-  const clearFilters = () => {
-    setSearchTerm('');
-    setOrganizationFilter('All');
-    setStatusFilter('All');
-    setDateFilter({
-      startDate: '',
-      endDate: ''
-    });
-  };
-
+// Organizations component for authenticated users
+function OrganizationsPage() {
   return (
     <div className="max-w-6xl mx-auto">
       <div className="md:flex md:items-center md:justify-between mb-8">
         <div className="flex-1 min-w-0">
           <h2 className="text-2xl font-bold leading-7 text-gray-900 sm:text-3xl sm:truncate">
-            My Meetings
+            Organizations
           </h2>
         </div>
         <div className="mt-4 flex md:mt-0 md:ml-4">
-          <Link 
-            href="/dashboard/upload"
-            className="ml-3 inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
-          >
-            Upload New Meeting
-          </Link>
+          <button className="ml-3 inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500">
+            Add Organization
+          </button>
         </div>
       </div>
 
-      <div className="bg-white shadow overflow-hidden sm:rounded-lg mb-8">
-        <div className="px-4 py-5 sm:px-6">
-          {/* Search and main filters row */}
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-4">
-            {/* Search input */}
-            <div className="relative rounded-md shadow-sm">
-              <input
-                type="text"
-                className="focus:ring-indigo-500 focus:border-indigo-500 block w-full pl-10 pr-3 py-2 border-gray-300 rounded-md"
-                placeholder="Search meetings..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-              />
-              <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                <svg className="h-5 w-5 text-gray-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-                </svg>
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        {MOCK_ORGANIZATIONS.map((org) => (
+          <Link
+            key={org.id}
+            href={`/organization/${org.id}`}
+            className="relative rounded-lg border border-gray-300 bg-white px-6 py-5 shadow-sm flex items-center space-x-3 hover:border-gray-400 focus-within:ring-2 focus-within:ring-offset-2 focus-within:ring-indigo-500 cursor-pointer"
+          >
+            <div className="flex-shrink-0">
+              <img className="h-10 w-10 rounded-full" src={org.logo} alt={org.name} />
+            </div>
+            <div className="flex-1 min-w-0">
+              <div className="focus:outline-none">
+                <span className="absolute inset-0" aria-hidden="true" />
+                <p className="text-sm font-medium text-gray-900">{org.name}</p>
+                <p className="text-sm text-gray-500 truncate">{org.meetingCount} meetings</p>
               </div>
             </div>
-            
-            {/* Organization filter */}
-            <div>
-              <label htmlFor="organization" className="block text-xs font-medium text-gray-500 mb-1">Organization</label>
-              <select
-                id="organization"
-                name="organization"
-                className="mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm rounded-md"
-                value={organizationFilter}
-                onChange={(e) => setOrganizationFilter(e.target.value)}
-              >
-                {uniqueOrganizations.map((org) => (
-                  <option key={org} value={org}>{org}</option>
-                ))}
-              </select>
-            </div>
-            
-            {/* Status filter */}
-            <div>
-              <label htmlFor="status" className="block text-xs font-medium text-gray-500 mb-1">Status</label>
-              <select
-                id="status"
-                name="status"
-                className="mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm rounded-md"
-                value={statusFilter}
-                onChange={(e) => setStatusFilter(e.target.value)}
-              >
-                {uniqueStatuses.map((status) => (
-                  <option key={status} value={status}>
-                    {status === 'All' 
-                      ? 'All' 
-                      : status === 'summarized' 
-                        ? 'Summarized' 
-                        : 'Not Summarized'}
-                  </option>
-                ))}
-              </select>
-            </div>
+          </Link>
+        ))}
+      </div>
+    </div>
+  );
+}
 
-            {/* Clear filters button */}
-            <div className="flex items-end">
-              <button
-                type="button"
-                onClick={clearFilters}
-                className="inline-flex items-center px-4 py-2 border border-gray-300 shadow-sm text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
-              >
-                Clear Filters
-              </button>
-            </div>
-          </div>
-
-          {/* Date range filter row */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-              <label htmlFor="startDate" className="block text-xs font-medium text-gray-500 mb-1">From Date</label>
-              <input
-                type="date"
-                id="startDate"
-                name="startDate"
-                className="mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm rounded-md"
-                value={dateFilter.startDate}
-                onChange={handleDateFilterChange}
-              />
-            </div>
-            <div>
-              <label htmlFor="endDate" className="block text-xs font-medium text-gray-500 mb-1">To Date</label>
-              <input
-                type="date"
-                id="endDate"
-                name="endDate"
-                className="mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm rounded-md"
-                value={dateFilter.endDate}
-                onChange={handleDateFilterChange}
-              />
-            </div>
-          </div>
-        </div>
-        
-        <div className="border-t border-gray-200">
-          <ul className="divide-y divide-gray-200">
-            {filteredMeetings.length > 0 ? (
-              filteredMeetings.map((meeting) => (
-                <li key={meeting.id}>
-                  <Link 
-                    href={meeting.status === 'summarized' 
-                      ? `/meeting/${meeting.id}` 
-                      : `/summarize/${meeting.id}`} 
-                    className="block hover:bg-gray-50"
-                  >
-                    <div className="px-4 py-4 sm:px-6">
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center">
-                          <p className="text-sm font-medium text-indigo-600 truncate">{meeting.title}</p>
-                          <div className="ml-2 flex-shrink-0 flex">
-                            <p className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full 
-                              ${meeting.status === 'summarized' ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'}`}>
-                              {meeting.status === 'summarized' ? 'Summarized' : 'Not Summarized'}
-                            </p>
-                          </div>
-                        </div>
-                        <div className="ml-2 flex-shrink-0 flex">
-                          <span className="inline-flex items-center text-xs text-gray-500">
-                            {new Date(meeting.date).toLocaleDateString()} • {meeting.duration}
-                          </span>
-                        </div>
-                      </div>
-                      <div className="mt-2 sm:flex sm:justify-between">
-                        <div className="sm:flex">
-                          <p className="flex items-center text-sm text-gray-500">
-                            <svg className="flex-shrink-0 mr-1.5 h-5 w-5 text-gray-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
-                            </svg>
-                            {meeting.participants} participants
-                          </p>
-                          <p className="mt-2 flex items-center text-sm text-gray-500 sm:mt-0 sm:ml-6">
-                            <svg className="flex-shrink-0 mr-1.5 h-5 w-5 text-gray-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-2 2 2 2 0 01-2-2v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83 0 2 2 0 010-2.83l.06-.06a1.65 1.65 0 00.33-1.82 1.65 1.65 0 00-1.51-1H3a2 2 0 01-2-2 2 2 0 012-2h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 010-2.83 2 2 0 012.83 0l.06.06a1.65 1.65 0 001.82.33H9a1.65 1.65 0 001-1.51V3a2 2 0 012-2 2 2 0 012 2v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 0 2 2 0 010 2.83l-.06.06a1.65 1.65 0 00-.33 1.82V9a1.65 1.65 0 001.51 1H21a2 2 0 012 2 2 2 0 01-2 2h-.09a1.65 1.65 0 00-1.51 1z" />
-                            </svg>
-                            {meeting.organization}
-                          </p>
-                        </div>
-                        <div className="mt-2 flex items-center text-sm text-gray-500 sm:mt-0">
-                          <svg className="flex-shrink-0 mr-1.5 h-5 w-5 text-gray-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                          </svg>
-                          <p>
-                            Source: {meeting.source}
-                          </p>
-                        </div>
-                      </div>
-                    </div>
-                  </Link>
-                </li>
-              ))
-            ) : (
-              <li className="py-12">
-                <div className="text-center">
-                  <svg className="mx-auto h-12 w-12 text-gray-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
-                  </svg>
-                  <h3 className="mt-2 text-sm font-medium text-gray-900">No meetings found</h3>
-                  <p className="mt-1 text-sm text-gray-500">Try adjusting your filters or search term.</p>
-                  <div className="mt-6">
-                    <button
-                      onClick={clearFilters}
-                      className="inline-flex items-center px-4 py-2 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
-                    >
-                      <svg className="-ml-1 mr-2 h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                      </svg>
-                      Clear Filters
-                    </button>
+// Landing page component for unauthenticated users
+function LandingPage() {
+  return (
+    <div className="bg-white">
+      {/* Hero Section */}
+      <div className="relative overflow-hidden">
+        <div className="max-w-7xl mx-auto">
+          <div className="relative z-10 pb-8 bg-white sm:pb-16 md:pb-20 lg:max-w-2xl lg:w-full lg:pb-28 xl:pb-32">
+            <main className="mt-10 mx-auto max-w-7xl px-4 sm:mt-12 sm:px-6 md:mt-16 lg:mt-20 lg:px-8 xl:mt-28">
+              <div className="sm:text-center lg:text-left">
+                <h1 className="text-4xl tracking-tight font-extrabold text-gray-900 sm:text-5xl md:text-6xl">
+                  <span className="block xl:inline">Advanced Meeting</span>{' '}
+                  <span className="block text-indigo-600 xl:inline">Intelligence</span>
+                </h1>
+                <p className="mt-3 text-base text-gray-500 sm:mt-5 sm:text-lg sm:max-w-xl sm:mx-auto md:mt-5 md:text-xl lg:mx-0">
+                  Transform your virtual meetings with AI-powered recording, transcription, and summarization. 
+                  Compatible with Zoom, Google Meet, Microsoft Teams, and more.
+                </p>
+                <div className="mt-5 sm:mt-8 sm:flex sm:justify-center lg:justify-start">
+                  <div className="rounded-md shadow">
                     <Link
-                      href="/dashboard/upload"
-                      className="ml-3 inline-flex items-center px-4 py-2 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+                      href="/auth/register"
+                      className="w-full flex items-center justify-center px-8 py-3 border border-transparent text-base font-medium rounded-md text-white bg-indigo-600 hover:bg-indigo-700 md:py-4 md:text-lg md:px-10"
                     >
-                      <svg className="-ml-1 mr-2 h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
-                      </svg>
-                      Upload New Meeting
+                      Get Started Free
+                    </Link>
+                  </div>
+                  <div className="mt-3 sm:mt-0 sm:ml-3">
+                    <Link
+                      href="/auth/login"
+                      className="w-full flex items-center justify-center px-8 py-3 border border-transparent text-base font-medium rounded-md text-indigo-700 bg-indigo-100 hover:bg-indigo-200 md:py-4 md:text-lg md:px-10"
+                    >
+                      Sign In
                     </Link>
                   </div>
                 </div>
-              </li>
-            )}
-          </ul>
+              </div>
+            </main>
+          </div>
+        </div>
+        <div className="lg:absolute lg:inset-y-0 lg:right-0 lg:w-1/2">
+          <div className="h-56 w-full bg-gradient-to-br from-indigo-500 to-purple-600 sm:h-72 md:h-96 lg:w-full lg:h-full flex items-center justify-center">
+            <div className="text-center text-white">
+              <svg className="mx-auto h-24 w-24 mb-4" fill="currentColor" viewBox="0 0 24 24">
+                <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/>
+              </svg>
+              <p className="text-lg font-semibold">AI-Powered Meeting Intelligence</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Features Section */}
+      <div className="py-12 bg-gray-50">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="lg:text-center">
+            <h2 className="text-base text-indigo-600 font-semibold tracking-wide uppercase">Features</h2>
+            <p className="mt-2 text-3xl leading-8 font-extrabold tracking-tight text-gray-900 sm:text-4xl">
+              Everything you need for smarter meetings
+            </p>
+          </div>
+
+          <div className="mt-10">
+            <div className="space-y-10 md:space-y-0 md:grid md:grid-cols-2 md:gap-x-8 md:gap-y-10">
+              {/* Recording Feature */}
+              <div className="relative">
+                <div className="absolute flex items-center justify-center h-12 w-12 rounded-md bg-indigo-500 text-white">
+                  <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                  </svg>
+                </div>
+                <div className="ml-16">
+                  <h3 className="text-lg leading-6 font-medium text-gray-900">Smart Recording</h3>
+                  <p className="mt-2 text-base text-gray-500">
+                    Automatically record meetings from Zoom, Google Meet, Microsoft Teams, and other popular platforms with crystal-clear quality.
+                  </p>
+                </div>
+              </div>
+
+              {/* Transcription Feature */}
+              <div className="relative">
+                <div className="absolute flex items-center justify-center h-12 w-12 rounded-md bg-indigo-500 text-white">
+                  <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                  </svg>
+                </div>
+                <div className="ml-16">
+                  <h3 className="text-lg leading-6 font-medium text-gray-900">AI Transcription</h3>
+                  <p className="mt-2 text-base text-gray-500">
+                    Get accurate, real-time transcriptions with speaker identification and timestamp precision for easy reference.
+                  </p>
+                </div>
+              </div>
+
+              {/* Summarization Feature */}
+              <div className="relative">
+                <div className="absolute flex items-center justify-center h-12 w-12 rounded-md bg-indigo-500 text-white">
+                  <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v10a2 2 0 002 2h8a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" />
+                  </svg>
+                </div>
+                <div className="ml-16">
+                  <h3 className="text-lg leading-6 font-medium text-gray-900">Intelligent Summaries</h3>
+                  <p className="mt-2 text-base text-gray-500">
+                    Generate comprehensive meeting summaries with key points, action items, and decisions automatically extracted.
+                  </p>
+                </div>
+              </div>
+
+              {/* Integration Feature */}
+              <div className="relative">
+                <div className="absolute flex items-center justify-center h-12 w-12 rounded-md bg-indigo-500 text-white">
+                  <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                  </svg>
+                </div>
+                <div className="ml-16">
+                  <h3 className="text-lg leading-6 font-medium text-gray-900">Universal Integration</h3>
+                  <p className="mt-2 text-base text-gray-500">
+                    Works seamlessly with all major video conferencing platforms including Zoom, Google Meet, Microsoft Teams, and more.
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* CTA Section */}
+      <div className="bg-indigo-700">
+        <div className="max-w-2xl mx-auto text-center py-16 px-4 sm:py-20 sm:px-6 lg:px-8">
+          <h2 className="text-3xl font-extrabold text-white sm:text-4xl">
+            <span className="block">Ready to transform your meetings?</span>
+            <span className="block">Start your free trial today.</span>
+          </h2>
+          <p className="mt-4 text-lg leading-6 text-indigo-200">
+            Join thousands of teams already using our advanced meeting intelligence platform.
+          </p>
+          <Link
+            href="/auth/register"
+            className="mt-8 w-full inline-flex items-center justify-center px-5 py-3 border border-transparent text-base font-medium rounded-md text-indigo-600 bg-white hover:bg-indigo-50 sm:w-auto"
+          >
+            Get Started Free
+          </Link>
         </div>
       </div>
     </div>
   );
+}
+
+// Main component that conditionally renders based on authentication
+export default function ConditionalPage() {
+  const isAuthenticated = useSelector(selectIsAuthenticated);
+
+  return isAuthenticated ? <OrganizationsPage /> : <LandingPage />;
 }

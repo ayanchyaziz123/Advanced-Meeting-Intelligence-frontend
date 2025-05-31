@@ -102,7 +102,9 @@ export const userRegister = createAsyncThunk(
       if (!emailRegex.test(userData.email)) {
         throw new Error('Please enter a valid email address');
       }
-      alert("Lets go");
+      
+      // REMOVE THIS LINE: alert("Lets go");
+      console.log("Starting registration process"); // Use console.log instead
 
       const response = await axios.post(API_ENDPOINTS.REGISTER, {
         email: userData.email.trim().toLowerCase(),
@@ -121,19 +123,19 @@ export const userRegister = createAsyncThunk(
         message: response.data.message || 'Verification code sent to your email'
       };
     } catch (error) {
-      console.log("error: ", error);
+      console.log("Registration error: ", error);
       const message = extractErrorMessage(error);
       return rejectWithValue({ message, code: error.response?.status });
     }
   }
 );
 
-// Async thunk for OTP verification
 export const verifyOtp = createAsyncThunk(
   'auth/verifyOtp',
   async ({ email, otp }, { rejectWithValue }) => {
-    console.log(email, otp)
-    alert("Alert")
+    console.log("Verifying OTP for:", email, otp);
+    // REMOVE THIS LINE: alert("Alert")
+    
     try {
       if (!email || !otp) {
         throw new Error('User ID and OTP are required');
@@ -149,8 +151,8 @@ export const verifyOtp = createAsyncThunk(
       });
 
       const { token, refreshToken, user } = response.data;
-      console.log(token, refreshToken, user)
-      alert("Stop")
+      console.log("OTP verification successful:", { token: token ? "present" : "missing", user });
+      // REMOVE THIS LINE: alert("Stop")
 
       // Store authentication data
       storage.set(AUTH_STORAGE_KEYS.TOKEN, token);

@@ -4,6 +4,7 @@ import { useState } from 'react';
 import Link from 'next/link';
 import { useSelector } from 'react-redux';
 import { selectIsAuthenticated } from '../redux/auth/authSlices'; // Adjust path as needed
+import ManageOrganizations from '../../src/app/components/ManageOrganizations';
 
 // Mock data for organizations
 const MOCK_ORGANIZATIONS = [
@@ -45,48 +46,85 @@ const MOCK_ORGANIZATIONS = [
   }
 ];
 
+// Platform button data
+const PLATFORMS = [
+  {
+    id: 'zoom',
+    name: 'Zoom',
+    icon: (
+      <svg className="w-6 h-6" viewBox="0 0 24 24" fill="currentColor">
+        <path d="M3.51 8.95c-.65.41-1.05 1.11-1.05 1.87v8.36c0 1.24 1.01 2.25 2.25 2.25h8c.76 0 1.46-.4 1.87-1.05L3.51 8.95zM20.49 15.05c.65-.41 1.05-1.11 1.05-1.87V4.82c0-1.24-1.01-2.25-2.25-2.25h-8c-.76 0-1.46.4-1.87 1.05l11.07 11.43z"/>
+      </svg>
+    ),
+    enabled: true,
+    bgColor: 'bg-blue-600',
+    hoverColor: 'hover:bg-blue-700',
+    description: 'Connect to retrieve your Zoom recordings'
+  },
+  {
+    id: 'google-meet',
+    name: 'Google Meet',
+    icon: (
+      <svg className="w-6 h-6" viewBox="0 0 24 24" fill="currentColor">
+        <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.94-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z"/>
+      </svg>
+    ),
+    enabled: false,
+    bgColor: 'bg-gray-400',
+    hoverColor: 'hover:bg-gray-500',
+    description: 'Coming soon - Retrieve Google Meet recordings'
+  },
+  {
+    id: 'ms-teams',
+    name: 'MS Teams',
+    icon: (
+      <svg className="w-6 h-6" viewBox="0 0 24 24" fill="currentColor">
+        <path d="M20.7 6.24A6.23 6.23 0 0018.4 2.5C16.8 1.4 14.8 1.4 13.2 2.5c-1.6 1.1-2.6 2.9-2.6 4.8v1.2c-1.5-.8-3.2-1.2-5-1.2C2.5 7.3 0 9.8 0 13s2.5 5.7 5.6 5.7c1.8 0 3.5-.4 5-1.2v1.2c0 1.9 1 3.7 2.6 4.8 1.6 1.1 3.6 1.1 5.2 0a6.23 6.23 0 002.3-3.74c.5-1.9.2-3.9-.8-5.57.5-.6.8-1.4.8-2.2s-.3-1.6-.8-2.2c1-1.67 1.3-3.67.8-5.57z"/>
+      </svg>
+    ),
+    enabled: false,
+    bgColor: 'bg-gray-400',
+    hoverColor: 'hover:bg-gray-500',
+    description: 'Coming soon - Retrieve Microsoft Teams recordings'
+  }
+];
+
 // Organizations component for authenticated users
 function OrganizationsPage() {
-  return (
-    <div className="max-w-6xl mx-auto">
-      <div className="md:flex md:items-center md:justify-between mb-8">
-        <div className="flex-1 min-w-0">
-          <h2 className="text-2xl font-bold leading-7 text-gray-900 sm:text-3xl sm:truncate">
-            Organizations
-          </h2>
-        </div>
-        <div className="mt-4 flex md:mt-0 md:ml-4">
-          <button className="ml-3 inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500">
-            Add Organization
-          </button>
-        </div>
-      </div>
+  const [selectedPlatform, setSelectedPlatform] = useState('zoom');
 
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        {MOCK_ORGANIZATIONS.map((org) => (
-          <Link
-            key={org.id}
-            href={`/organization/${org.id}`}
-            className="relative rounded-lg border border-gray-300 bg-white px-6 py-5 shadow-sm flex items-center space-x-3 hover:border-gray-400 focus-within:ring-2 focus-within:ring-offset-2 focus-within:ring-indigo-500 cursor-pointer"
-          >
-            <div className="flex-shrink-0">
-              <img className="h-10 w-10 rounded-full" src={org.logo} alt={org.name} />
-            </div>
-            <div className="flex-1 min-w-0">
-              <div className="focus:outline-none">
-                <span className="absolute inset-0" aria-hidden="true" />
-                <p className="text-sm font-medium text-gray-900">{org.name}</p>
-                <p className="text-sm text-gray-500 truncate">{org.meetingCount} meetings</p>
-              </div>
-            </div>
-          </Link>
-        ))}
-      </div>
-    </div>
+  const handlePlatformSelect = (platformId) => {
+    const platform = PLATFORMS.find(p => p.id === platformId);
+    if (platform && platform.enabled) {
+      setSelectedPlatform(platformId);
+      console.log(`Selected platform: ${platform.name}`);
+    }
+  };
+
+  const handleConnectZoom = () => {
+    if (selectedPlatform === 'zoom') {
+      // Create sample Zoom OAuth URL for demonstration
+      const sampleZoomAuthUrl = 'https://zoom.us/oauth/authorize?' + 
+        'response_type=code&' +
+        'client_id=YOUR_CLIENT_ID&' +
+        'redirect_uri=' + encodeURIComponent('http://localhost:3000/auth/zoom/callback') + '&' +
+        'scope=recording:read user:read&' +
+        'state=sample_state_123';
+      
+      console.log('Redirecting to Zoom OAuth...');
+      console.log('Zoom Auth URL:', sampleZoomAuthUrl);
+      
+      // Redirect to Zoom OAuth (sample)
+      window.location.href = sampleZoomAuthUrl;
+    }
+  };
+
+  return (
+    <ManageOrganizations/>
   );
 }
 
-// Landing page component for unauthenticated users
+// Landing page component for unauthenticated users (unchanged)
 function LandingPage() {
   return (
     <div className="bg-white">

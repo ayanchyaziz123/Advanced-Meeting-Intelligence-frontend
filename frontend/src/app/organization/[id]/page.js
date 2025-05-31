@@ -7,7 +7,7 @@ import { useRouter } from 'next/router';
 // Mock data for organizations
 const MOCK_ORGANIZATIONS = [
     {
-      id: 1,
+      id: 'UTPFYXCP',
       name: 'Next Generation Innovation L.L.C.',
       logo: '/logo_ngi.avif',  // Local placeholder image
       meetingCount: 7
@@ -55,7 +55,7 @@ const MOCK_MEETINGS = [
       participants: 6,
       source: 'Zoom',
       status: 'summarized',
-      organizationId: 3  // CodeCrafters Team
+      organizationId: 'UTPFYXCP'  // CodeCrafters Team
     },
     {
       id: 2,

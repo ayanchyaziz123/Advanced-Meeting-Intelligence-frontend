@@ -1,317 +1,522 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { useParams, useRouter } from 'next/navigation';
+import { useSelector, useDispatch } from 'react-redux';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
 
-// Mock data for a single meeting
-const MOCK_MEETING = {
-  id: 1,
-  title: 'Weekly Team Standup',
-  date: '2025-05-08T10:00:00',
-  duration: '30 min',
-  participants: ['John Doe', 'Sarah Smith', 'Mike Johnson', 'Alice Brown', 'Bob Wilson', 'Carol Taylor', 'David Lee', 'Eve Chen'],
-  source: 'Zoom',
-  status: 'completed',
-  summary: {
-    keyPoints: [
-      'Q2 marketing campaign achieved 120% of target goals',
-      'New product launch scheduled for August 15th',
-      'Budget approval needed for additional design resources',
-      'Customer satisfaction scores increased by 18% this quarter'
-    ],
-    decisions: [
-      'Approved additional $20K for marketing campaign',
-      'Pushed back beta release to June 30th',
-      'Agreed to hire two additional designers'
-    ],
-    actionItems: [
-      { task: 'Schedule follow-up with design team', assignee: 'Sarah Smith', dueDate: '2025-05-15' },
-      { task: 'Prepare budget justification document', assignee: 'Mike Johnson', dueDate: '2025-05-20' },
-      { task: 'Review beta feedback and compile report', assignee: 'John Doe', dueDate: '2025-05-22' }
-    ]
-  },
-  transcript: `
-John Doe: Let's get started with our weekly standup. 
-
-Sarah Smith: Before we begin, I want to share that the Q2 marketing campaign has exceeded expectations. We're at 120% of our target goals.
-
-Mike Johnson: That's fantastic news! I think we should consider allocating more resources to this campaign given its success.
-
-John Doe: I agree. What kind of additional budget would you need?
-
-Sarah Smith: I think with an additional $20K, we could expand our reach significantly.
-
-John Doe: That makes sense to me. Does anyone have objections to approving this additional budget?
-
-Alice Brown: No objections here. The ROI seems clear.
-
-John Doe: Great, let's consider that approved. Let's talk about the product launch timeline.
-
-Bob Wilson: We're still on track for the August 15th launch date, but the beta release might need to be pushed back.
-
-Carol Taylor: Why is that?
-
-Bob Wilson: We've identified some UX issues that need to be addressed before we can release the beta.
-
-John Doe: How much more time do you need?
-
-Bob Wilson: I'm thinking two weeks would be sufficient. So pushing it to June 30th.
-
-John Doe: Alright. That still gives us enough buffer before the full launch. Let's do that.
-
-David Lee: I wanted to bring up the need for additional design resources. Our current team is stretched thin.
-
-Alice Brown: I've noticed that too. The quality of work is excellent, but the turnaround time is getting longer.
-
-John Doe: What specifically do we need?
-
-David Lee: I think two more designers would get us back on track.
-
-Eve Chen: Our customer satisfaction scores have increased by 18% this quarter, so I think investing in design makes sense.
-
-John Doe: I agree. Let's move forward with hiring two additional designers. David, can you work with HR on this?
-
-David Lee: Yes, I'll handle it.
-
-Sarah Smith: I'll schedule a follow-up with the design team to discuss priorities.
-
-Mike Johnson: I'll prepare the budget justification document for the new hires.
-
-John Doe: Great. I'll review the beta feedback when it's ready and compile a report. Let's plan to discuss that in two weeks.
-
-Everyone: Sounds good!
-
-John Doe: Thanks everyone. Let's adjourn for today.
-  `
-};
-
-export default function MeetingDetailPage({ params }) {
+export default function MeetingDetails() {
+  const params = useParams();
   const router = useRouter();
-  const { id } = params;
-  const [meeting, setMeeting] = useState(MOCK_MEETING);
-  const [activeTab, setActiveTab] = useState('summary');
-  const [isExporting, setIsExporting] = useState(false);
+  const dispatch = useDispatch();
   
-  // Simulate export functionality
-  const handleExport = (format) => {
-    setIsExporting(true);
+  // Get meeting ID from URL params
+  const meetingId = params?.id;
+  
+  // Get auth state from Redux
+  const authToken = useSelector((state) => state.auth?.token);
+  const isAuthenticated = useSelector((state) => state.auth?.isAuthenticated);
+  const user = useSelector((state) => state.auth?.user);
+  
+  // Local state
+  const [meeting, setMeeting] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [transcribing, setTranscribing] = useState(false);
+  const [transcript, setTranscript] = useState(null);
+  const [summary, setSummary] = useState(null);
+  const [transcriptLoading, setTranscriptLoading] = useState(false);
+  const [retryCount, setRetryCount] = useState(0);
+
+  // Helper function to get auth headers (following your Redux pattern)
+  const getAuthHeaders = () => {
+    // Try Redux token first, then localStorage as fallback
+    const token = authToken || localStorage.getItem('token');
     
-    // Simulate processing time
-    setTimeout(() => {
-      setIsExporting(false);
-      // In a real app, this would trigger a download
-      alert(`Meeting summary exported as ${format} file!`);
-    }, 1500);
+    if (!token) {
+      throw new Error('No authentication token found. Please log in.');
+    }
+    
+    return {
+      'Authorization': `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    };
   };
-  
-  if (!meeting) {
+
+  // Enhanced API call with retry logic for 502 errors
+  const makeApiCall = async (url, options = {}, maxRetries = 3) => {
+    let lastError;
+    
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      try {
+        console.log(`Attempt ${attempt} for ${url}`);
+        
+        const response = await fetch(url, {
+          ...options,
+          timeout: 30000, // 30 second timeout
+        });
+
+        // If we get a 502, wait and retry
+        if (response.status === 502 && attempt < maxRetries) {
+          console.log(`502 error on attempt ${attempt}, retrying in ${attempt * 2} seconds...`);
+          await new Promise(resolve => setTimeout(resolve, attempt * 2000));
+          continue;
+        }
+
+        return response;
+      } catch (error) {
+        lastError = error;
+        console.error(`Attempt ${attempt} failed:`, error);
+        
+        // If it's a network error and we have retries left, wait and retry
+        if (attempt < maxRetries && (error.name === 'TypeError' || error.message.includes('fetch'))) {
+          console.log(`Network error on attempt ${attempt}, retrying in ${attempt * 2} seconds...`);
+          await new Promise(resolve => setTimeout(resolve, attempt * 2000));
+          continue;
+        }
+        
+        // If it's the last attempt or a non-retryable error, throw
+        throw error;
+      }
+    }
+    
+    throw lastError;
+  };
+
+  // Fetch meeting details on component mount
+  useEffect(() => {
+    // Check if we have authentication
+    if (!authToken && !localStorage.getItem('token')) {
+      setError('Please log in to view meeting details.');
+      setLoading(false);
+      return;
+    }
+    
+    if (meetingId) {
+      fetchMeetingDetails();
+    }
+  }, [meetingId, authToken]);
+
+  const fetchMeetingDetails = async () => {
+    try {
+      setLoading(true);
+      setError(null);
+      
+      const headers = getAuthHeaders();
+      
+      console.log('Fetching meeting details for ID:', meetingId);
+      console.log('Using Redux token:', !!authToken);
+      console.log('User authenticated:', isAuthenticated);
+      
+      // Use the enhanced API call with retry logic
+      const response = await makeApiCall(
+        `https://actionboard-backend-cdqe.onrender.com/api/meetings/zoom/meeting-details/${meetingId}/`,
+        { headers }
+      );
+      
+      console.log('Response status:', response.status);
+      
+      if (response.ok) {
+        const data = await response.json();
+        console.log('Meeting data received:', data);
+        setMeeting(data);
+        
+        // Check if transcript already exists in the response
+        if (data.transcript) {
+          if (typeof data.transcript === 'object') {
+            setTranscript(data.transcript.full_transcript);
+            setSummary(data.transcript.summary || null);
+          } else {
+            setTranscript(data.transcript);
+          }
+        }
+        if (data.summary && !transcript) {
+          setSummary(data.summary);
+        }
+        
+        // Reset retry count on success
+        setRetryCount(0);
+      } else if (response.status === 401) {
+        setError('Authentication failed. Please log in again.');
+        // Optionally dispatch logout action or redirect
+        // dispatch(logout());
+        // router.push('/login');
+      } else if (response.status === 403) {
+        setError('Access denied. You do not have permission to view this meeting.');
+      } else if (response.status === 404) {
+        setError('Meeting not found.');
+      } else if (response.status === 502) {
+        setError('Server is temporarily unavailable. Our server may be starting up or experiencing issues.');
+      } else {
+        const errorText = await response.text();
+        console.error('API Error:', errorText);
+        setError(`Failed to load meeting details: ${response.status} - ${errorText}`);
+      }
+    } catch (err) {
+      console.error('Error fetching meeting details:', err);
+      
+      if (err.message.includes('No authentication token')) {
+        setError('Please log in to view meeting details.');
+        // Optionally redirect to login
+        // router.push('/login');
+      } else if (err.name === 'TypeError' && err.message.includes('Failed to fetch')) {
+        setError('Unable to connect to the server. Please check your internet connection or try again later.');
+      } else {
+        setError('Failed to load meeting details. Please try again.');
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleTranscribe = async () => {
+    try {
+      setTranscribing(true);
+      const headers = getAuthHeaders();
+      
+      const response = await makeApiCall(
+        `https://actionboard-backend-cdqe.onrender.com/api/transcripts/zoom/transcribe/${meetingId}/`,
+        {
+          method: 'POST',
+          headers,
+        }
+      );
+      
+      if (response.ok) {
+        const data = await response.json();
+        alert('Transcription started successfully!');
+        console.log('Transcription response:', data);
+        
+        // Update the transcript and summary if returned
+        if (data.full_transcript) {
+          setTranscript(data.full_transcript);
+        }
+        if (data.summary) {
+          setSummary(data.summary);
+        }
+      } else if (response.status === 401) {
+        alert('Authentication failed. Please log in again.');
+      } else if (response.status === 403) {
+        alert('Access denied. You do not have permission to transcribe this meeting.');
+      } else if (response.status === 502) {
+        alert('Server is temporarily unavailable. Please try again in a few moments.');
+      } else {
+        const errorData = await response.text();
+        alert(`Failed to start transcription: ${errorData}`);
+      }
+    } catch (err) {
+      console.error('Error starting transcription:', err);
+      if (err.message.includes('No authentication token')) {
+        alert('Please log in to start transcription.');
+      } else {
+        alert('Failed to start transcription. Please try again.');
+      }
+    } finally {
+      setTranscribing(false);
+    }
+  };
+
+  const fetchTranscript = async () => {
+    try {
+      setTranscriptLoading(true);
+      const headers = getAuthHeaders();
+      
+      const response = await makeApiCall(
+        `https://actionboard-backend-cdqe.onrender.com/api/transcripts/zoom/fetch-transcript/${meetingId}/`,
+        { headers }
+      );
+      
+      if (response.ok) {
+        const data = await response.json();
+        
+        // Handle the response structure from your FetchTranscriptView
+        if (data.full_transcript) {
+          setTranscript(data.full_transcript);
+        }
+        if (data.summary) {
+          setSummary(data.summary);
+        }
+        
+        // If no transcript found
+        if (data.transcript === null) {
+          alert('No transcript found for this meeting. Try starting transcription first.');
+        }
+      } else if (response.status === 401) {
+        alert('Authentication failed. Please log in again.');
+      } else if (response.status === 403) {
+        alert('Access denied. You do not have permission to view this transcript.');
+      } else if (response.status === 404) {
+        alert('Meeting not found.');
+      } else if (response.status === 502) {
+        alert('Server is temporarily unavailable. Please try again in a few moments.');
+      } else {
+        const errorData = await response.text();
+        alert(`Failed to fetch transcript: ${errorData}`);
+      }
+    } catch (err) {
+      console.error('Error fetching transcript:', err);
+      if (err.message.includes('No authentication token')) {
+        alert('Please log in to fetch transcript.');
+      } else {
+        alert('Failed to fetch transcript. Please try again.');
+      }
+    } finally {
+      setTranscriptLoading(false);
+    }
+  };
+
+  const formatMeetingDateTime = (dateTime) => {
+    if (!dateTime) return 'N/A';
+    return new Date(dateTime).toLocaleString();
+  };
+
+  const getMeetingStatus = (meeting) => {
+    if (!meeting?.start_time) return 'scheduled';
+    
+    const now = new Date();
+    const startTime = new Date(meeting.start_time);
+    const endTime = new Date(startTime.getTime() + (meeting.duration * 60000));
+    
+    if (now < startTime) return 'scheduled';
+    if (now >= startTime && now <= endTime) return 'started';
+    return 'ended';
+  };
+
+  if (loading) {
     return (
-      <div className="max-w-6xl mx-auto text-center py-12">
-        <h2 className="text-2xl font-bold text-gray-900">Meeting not found</h2>
-        <p className="mt-2 text-gray-600">The meeting you're looking for does not exist or has been removed.</p>
-        <div className="mt-6">
-          <Link href="/dashboard" className="text-indigo-600 hover:text-indigo-500">
-            Return to dashboard
-          </Link>
+      <div className="max-w-4xl mx-auto p-6">
+        <div className="text-center py-12">
+          <div className="inline-flex items-center">
+            <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-indigo-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+            </svg>
+            Loading meeting details...
+          </div>
         </div>
       </div>
     );
   }
 
-  return (
-    <div className="max-w-6xl mx-auto">
-      <div className="mb-8">
-        <div className="flex items-center mb-4">
-          <button
-            onClick={() => router.push('/')}
-            className="mr-3 text-gray-500 hover:text-gray-700"
-          >
-            <svg className="h-6 w-6" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10 19l-7-7m0 0l7-7m-7 7h18" />
-            </svg>
-          </button>
-          <h2 className="text-2xl font-bold leading-7 text-gray-900 sm:truncate">
-            {meeting.title}
+  if (error || !meeting) {
+    return (
+      <div className="max-w-4xl mx-auto p-6">
+        <div className="text-center py-12">
+          <h2 className="text-2xl font-bold text-gray-900">
+            {error?.includes('502') || error?.includes('server') ? 'Server Temporarily Unavailable' : 'Meeting Not Found'}
           </h2>
-        </div>
-        
-        <div className="flex flex-wrap gap-4 items-center text-sm text-gray-500">
-          <span className="flex items-center">
-            <svg className="mr-1.5 h-5 w-5 text-gray-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-            </svg>
-            {new Date(meeting.date).toLocaleDateString()}
-          </span>
-          <span className="flex items-center">
-            <svg className="mr-1.5 h-5 w-5 text-gray-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-            </svg>
-            {meeting.duration}
-          </span>
-          <span className="flex items-center">
-            <svg className="mr-1.5 h-5 w-5 text-gray-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
-            </svg>
-            {meeting.participants.length} participants
-          </span>
-          <span className="flex items-center">
-            <svg className="mr-1.5 h-5 w-5 text-gray-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
-            </svg>
-            Source: {meeting.source}
-          </span>
-        </div>
-      </div>
-
-      <div className="bg-white shadow overflow-hidden sm:rounded-lg mb-8">
-        <div className="border-b border-gray-200">
-          <nav className="-mb-px flex">
+          <p className="mt-2 text-gray-600">{error || 'The meeting you are looking for does not exist.'}</p>
+          <div className="mt-6 space-x-3">
             <button
-              className={`py-4 px-6 text-center border-b-2 font-medium text-sm ${
-                activeTab === 'summary'
-                  ? 'border-indigo-500 text-indigo-600'
-                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-              }`}
-              onClick={() => setActiveTab('summary')}
+              onClick={() => router.back()}
+              className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
             >
-              Summary
+              Go Back
             </button>
-            <button
-              className={`py-4 px-6 text-center border-b-2 font-medium text-sm ${
-                activeTab === 'transcript'
-                  ? 'border-indigo-500 text-indigo-600'
-                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-              }`}
-              onClick={() => setActiveTab('transcript')}
-            >
-              Transcript
-            </button>
-          </nav>
-        </div>
-
-        {activeTab === 'summary' ? (
-          <div className="px-4 py-5 sm:p-6">
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-              <div className="lg:col-span-2">
-                <div className="mb-8">
-                  <h3 className="text-lg font-medium text-gray-900 mb-4">Key Points</h3>
-                  <ul className="space-y-3">
-                    {meeting.summary.keyPoints.map((point, index) => (
-                      <li key={index} className="flex">
-                        <svg className="h-6 w-6 text-green-500 mr-2" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                        </svg>
-                        <span>{point}</span>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-                
-                <div className="mb-8">
-                  <h3 className="text-lg font-medium text-gray-900 mb-4">Decisions Made</h3>
-                  <ul className="space-y-3">
-                    {meeting.summary.decisions.map((decision, index) => (
-                      <li key={index} className="flex">
-                        <svg className="h-6 w-6 text-blue-500 mr-2" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" />
-                        </svg>
-                        <span>{decision}</span>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              </div>
-              
-              <div>
-                <div className="bg-gray-50 rounded-lg p-6">
-                  <h3 className="text-lg font-medium text-gray-900 mb-4">Action Items</h3>
-                  <ul className="space-y-4">
-                    {meeting.summary.actionItems.map((item, index) => (
-                      <li key={index} className="bg-white p-3 rounded border border-gray-200">
-                        <div className="flex items-start">
-                          <input
-                            type="checkbox"
-                            className="h-4 w-4 mt-1 text-indigo-600 focus:ring-indigo-500 border-gray-300 rounded"
-                          />
-                          <div className="ml-3 flex-1">
-                            <p className="text-sm font-medium text-gray-900">{item.task}</p>
-                            <div className="mt-1 flex items-center text-xs text-gray-500">
-                              <span>{item.assignee}</span>
-                              <span className="mx-1">•</span>
-                              <span>Due: {item.dueDate}</span>
-                            </div>
-                          </div>
-                        </div>
-                      </li>
-                    ))}
-                  </ul>
-                  
-                  <div className="mt-6">
-                    <h4 className="text-sm font-medium text-gray-900 mb-3">Participants</h4>
-                    <div className="flex flex-wrap gap-2">
-                      {meeting.participants.map((participant, index) => (
-                        <span 
-                          key={index}
-                          className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-indigo-100 text-indigo-800"
-                        >
-                          {participant}
-                        </span>
-                      ))}
-                    </div>
-                  </div>
-                </div>
-                
-                <div className="mt-6">
-                  <h4 className="text-sm font-medium text-gray-900 mb-3">Export Summary</h4>
-                  <div className="flex flex-col space-y-3">
-                    <button
-                      onClick={() => handleExport('PDF')}
-                      disabled={isExporting}
-                      className={`inline-flex items-center justify-center px-4 py-2 border border-transparent text-sm font-medium rounded-md ${
-                        isExporting ? 'bg-gray-300 cursor-not-allowed' : 'bg-red-50 text-red-700 hover:bg-red-100'
-                      }`}
-                    >
-                      <svg className="mr-2 h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
-                      </svg>
-                      {isExporting ? 'Exporting...' : 'Export as PDF'}
-                    </button>
-                    <button
-                      onClick={() => handleExport('Word')}
-                      disabled={isExporting}
-                      className={`inline-flex items-center justify-center px-4 py-2 border border-transparent text-sm font-medium rounded-md ${
-                        isExporting ? 'bg-gray-300 cursor-not-allowed' : 'bg-blue-50 text-blue-700 hover:bg-blue-100'
-                      }`}
-                    >
-                      <svg className="mr-2 h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
-                      </svg>
-                      {isExporting ? 'Exporting...' : 'Export as Word'}
-                    </button>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        ) : (
-          <div className="px-4 py-5 sm:p-6">
-            <div className="mb-4 flex justify-between items-center">
-              <h3 className="text-lg font-medium text-gray-900">Full Transcript</h3>
+            {(error?.includes('502') || error?.includes('server') || error?.includes('connect')) && (
               <button
-                className="inline-flex items-center px-3 py-1 border border-transparent text-sm font-medium rounded text-indigo-700 bg-indigo-100 hover:bg-indigo-200"
+                onClick={fetchMeetingDetails}
+                className="inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md shadow-sm text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
               >
-                Copy Transcript
+                Try Again
               </button>
+            )}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  const status = getMeetingStatus(meeting);
+
+  return (
+    <div className="max-w-4xl mx-auto p-6">
+      {/* Header */}
+      <div className="mb-8">
+        <button
+          onClick={() => router.back()}
+          className="inline-flex items-center text-sm font-medium text-indigo-600 hover:text-indigo-500"
+        >
+          <svg className="mr-1 h-5 w-5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
+            <path fillRule="evenodd" d="M12.707 5.293a1 1 0 010 1.414L9.414 10l3.293 3.293a1 1 0 01-1.414 1.414l-4-4a1 1 0 010-1.414l4-4a1 1 0 011.414 0z" clipRule="evenodd" />
+          </svg>
+          Back
+        </button>
+        <div className="mt-2">
+          <h1 className="text-3xl font-bold leading-7 text-gray-900 sm:truncate">
+            {meeting.topic || 'Meeting Details'}
+          </h1>
+          <div className="mt-2 flex items-center">
+            <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full 
+              ${status === 'scheduled' ? 'bg-blue-100 text-blue-800' : 
+                status === 'started' ? 'bg-green-100 text-green-800' : 
+                'bg-gray-100 text-gray-800'}`}>
+              {status.charAt(0).toUpperCase() + status.slice(1)}
+            </span>
+            <span className="ml-3 text-sm text-gray-500">
+              Meeting ID: {meeting.meeting_id || meeting.id}
+            </span>
+          </div>
+        </div>
+      </div>
+
+      {/* Meeting Information */}
+      <div className="bg-white shadow overflow-hidden sm:rounded-lg mb-8">
+        <div className="px-4 py-5 sm:px-6">
+          <h3 className="text-lg leading-6 font-medium text-gray-900">Meeting Information</h3>
+        </div>
+        <div className="border-t border-gray-200">
+          <dl>
+            <div className="bg-gray-50 px-4 py-5 sm:grid sm:grid-cols-3 sm:gap-4 sm:px-6">
+              <dt className="text-sm font-medium text-gray-500">Start Time</dt>
+              <dd className="mt-1 text-sm text-gray-900 sm:mt-0 sm:col-span-2">
+                {formatMeetingDateTime(meeting.start_time)}
+              </dd>
             </div>
-            <div className="bg-gray-50 p-4 rounded-lg overflow-auto max-h-[600px]">
-              <pre className="whitespace-pre-wrap font-mono text-sm text-gray-800">
-                {meeting.transcript}
-              </pre>
+            <div className="bg-white px-4 py-5 sm:grid sm:grid-cols-3 sm:gap-4 sm:px-6">
+              <dt className="text-sm font-medium text-gray-500">Duration</dt>
+              <dd className="mt-1 text-sm text-gray-900 sm:mt-0 sm:col-span-2">
+                {meeting.duration ? `${meeting.duration} minutes` : 'N/A'}
+              </dd>
+            </div>
+            {meeting.host && (
+              <div className="bg-gray-50 px-4 py-5 sm:grid sm:grid-cols-3 sm:gap-4 sm:px-6">
+                <dt className="text-sm font-medium text-gray-500">Host</dt>
+                <dd className="mt-1 text-sm text-gray-900 sm:mt-0 sm:col-span-2">
+                  {meeting.host.full_name || meeting.host.email || 'N/A'}
+                </dd>
+              </div>
+            )}
+            {meeting.agenda && (
+              <div className="bg-white px-4 py-5 sm:grid sm:grid-cols-3 sm:gap-4 sm:px-6">
+                <dt className="text-sm font-medium text-gray-500">Agenda</dt>
+                <dd className="mt-1 text-sm text-gray-900 sm:mt-0 sm:col-span-2">
+                  {meeting.agenda}
+                </dd>
+              </div>
+            )}
+            {meeting.join_url && (
+              <div className="bg-gray-50 px-4 py-5 sm:grid sm:grid-cols-3 sm:gap-4 sm:px-6">
+                <dt className="text-sm font-medium text-gray-500">Join URL</dt>
+                <dd className="mt-1 text-sm text-gray-900 sm:mt-0 sm:col-span-2">
+                  <a 
+                    href={meeting.join_url} 
+                    target="_blank" 
+                    rel="noopener noreferrer"
+                    className="text-indigo-600 hover:text-indigo-500 break-all"
+                  >
+                    {meeting.join_url}
+                  </a>
+                </dd>
+              </div>
+            )}
+          </dl>
+        </div>
+      </div>
+
+      {/* Action Buttons */}
+      <div className="bg-white shadow overflow-hidden sm:rounded-lg mb-8">
+        <div className="px-4 py-5 sm:px-6">
+          <h3 className="text-lg leading-6 font-medium text-gray-900">Actions</h3>
+          <p className="mt-1 max-w-2xl text-sm text-gray-500">
+            Transcribe the meeting recording and generate a summary.
+          </p>
+        </div>
+        <div className="border-t border-gray-200 px-4 py-5 sm:px-6">
+          <div className="flex space-x-3">
+            <button
+              onClick={handleTranscribe}
+              disabled={transcribing}
+              className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {transcribing ? (
+                <>
+                  <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                  </svg>
+                  Transcribing...
+                </>
+              ) : (
+                <>
+                  <svg className="-ml-1 mr-2 h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" />
+                  </svg>
+                  Start Transcription
+                </>
+              )}
+            </button>
+
+            <button
+              onClick={fetchTranscript}
+              disabled={transcriptLoading}
+              className="inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md shadow-sm text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {transcriptLoading ? (
+                <>
+                  <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-gray-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                  </svg>
+                  Loading...
+                </>
+              ) : (
+                <>
+                  <svg className="-ml-1 mr-2 h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                  </svg>
+                  Fetch Transcript
+                </>
+              )}
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* Transcript Section */}
+      {transcript && (
+        <div className="bg-white shadow overflow-hidden sm:rounded-lg mb-8">
+          <div className="px-4 py-5 sm:px-6">
+            <h3 className="text-lg leading-6 font-medium text-gray-900">Transcript</h3>
+          </div>
+          <div className="border-t border-gray-200 px-4 py-5 sm:px-6">
+            <div className="prose max-w-none">
+              <div className="bg-gray-50 p-4 rounded-lg max-h-96 overflow-y-auto">
+                <pre className="whitespace-pre-wrap text-sm text-gray-800 font-mono">
+                  {transcript}
+                </pre>
+              </div>
             </div>
           </div>
-        )}
-      </div>
+        </div>
+      )}
+
+      {/* Summary Section */}
+      {summary && (
+        <div className="bg-white shadow overflow-hidden sm:rounded-lg">
+          <div className="px-4 py-5 sm:px-6">
+            <h3 className="text-lg leading-6 font-medium text-gray-900">Summary</h3>
+          </div>
+          <div className="border-t border-gray-200 px-4 py-5 sm:px-6">
+            <div className="prose max-w-none">
+              <div className="bg-blue-50 p-4 rounded-lg">
+                {typeof summary === 'object' ? (
+                  <div className="text-sm text-gray-800">
+                    {Object.entries(summary).map(([key, value]) => (
+                      <div key={key} className="mb-2">
+                        <strong className="capitalize">{key.replace('_', ' ')}:</strong>
+                        <p className="mt-1">{Array.isArray(value) ? value.join(', ') : value}</p>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-sm text-gray-800 whitespace-pre-wrap">{summary}</p>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

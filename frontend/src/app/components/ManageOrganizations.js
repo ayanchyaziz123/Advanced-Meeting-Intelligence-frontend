@@ -16,6 +16,7 @@ import {
   selectOrganizationSuccessMessage,
   selectCurrentOrganization
 } from '../../redux/auth/organizationSlice'; // Adjust import path as needed
+import { ZoomConnectButton, ZoomConnectionStatus } from './ZoomConnection';
 
 /**
  * ManageOrganizations Component
@@ -27,6 +28,7 @@ import {
  * - Delete organizations
  * - Set current organization
  * - Search and filter functionality
+ * - Zoom integration
  * 
  * @param {Object} props - Component props
  * @param {string} [props.title] - Custom title for the page
@@ -36,8 +38,11 @@ import {
  * @param {Function} [props.onOrganizationCreate] - Callback when organization is created
  * @param {Function} [props.onOrganizationUpdate] - Callback when organization is updated
  * @param {Function} [props.onOrganizationDelete] - Callback when organization is deleted
+ * @param {Function} [props.onZoomConnectionChange] - Callback when Zoom connection changes
  * @param {boolean} [props.showSearch] - Whether to show search functionality
  * @param {boolean} [props.showActions] - Whether to show action buttons
+ * @param {boolean} [props.showZoomConnect] - Whether to show Zoom connect button
+ * @param {boolean} [props.showZoomStatus] - Whether to show Zoom connection status
  * @param {string} [props.viewMeetingsPath] - Custom path for view meetings link
  */
 const ManageOrganizations = ({
@@ -48,9 +53,12 @@ const ManageOrganizations = ({
   onOrganizationCreate,
   onOrganizationUpdate,
   onOrganizationDelete,
+  onZoomConnectionChange,
   showSearch = true,
   showActions = true,
-  viewMeetingsPath = "/organization"
+  showZoomConnect = true,
+  showZoomStatus = true,
+  viewMeetingsPath = "/meetings"
 }) => {
   const dispatch = useDispatch();
   
@@ -148,6 +156,16 @@ const ManageOrganizations = ({
     }
   };
 
+  const handleZoomConnectionChange = (isConnected, status, userInfo) => {
+    // Call custom callback if provided
+    if (onZoomConnectionChange) {
+      onZoomConnectionChange(isConnected, status, userInfo);
+    }
+    
+    // Log for debugging
+    console.log('Zoom connection changed:', { isConnected, status, userInfo });
+  };
+
   const openCreateModal = () => {
     setFormData({ name: '' });
     setIsCreateModalOpen(true);
@@ -192,8 +210,22 @@ const ManageOrganizations = ({
           <p className="mt-1 text-sm text-gray-500">
             {description}
           </p>
+          {/* Zoom Connection Status */}
+          {showZoomStatus && (
+            <div className="mt-2">
+              <ZoomConnectionStatus showDetails={true} />
+            </div>
+          )}
         </div>
-        <div className="mt-4 flex md:mt-0 md:ml-4">
+        <div className="mt-4 flex space-x-3 md:mt-0 md:ml-4">
+          {/* Zoom Connect Button */}
+          {showZoomConnect && (
+            <ZoomConnectButton 
+              onConnectionChange={handleZoomConnectionChange}
+            />
+          )}
+          
+          {/* Create Organization Button */}
           <button
             onClick={openCreateModal}
             className="inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"

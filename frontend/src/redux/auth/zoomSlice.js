@@ -1,79 +1,30 @@
 import { createSlice, createAsyncThunk } from '@reduxjs/toolkit';
 import axios from 'axios';
 
-// Constants
-const ZOOM_STORAGE_KEYS = {
-  CONNECTION: 'zoom_connection',
-  ACCESS_TOKEN: 'zoom_access_token',
-  REFRESH_TOKEN: 'zoom_refresh_token',
-  USER_INFO: 'zoom_user_info'
-};
+// Base URL for your backend
+const API_BASE_URL = 'https://actionboard-backend-cdqe.onrender.com/api';
+const API_BASE_URL2 = 'https://actionboard-backend-cdqe.onrender.com/api';
 
-const ZOOM_API_ENDPOINTS = {
-  TOKEN_EXCHANGE: '/api/zoom/token',
-  USER_INFO: '/api/zoom/user',
-  RECORDINGS: '/api/zoom/recordings',
-  REFRESH_TOKEN: '/api/zoom/refresh'
-};
-
-const ZOOM_CONFIG = {
-  CLIENT_ID: process.env.NEXT_PUBLIC_ZOOM_CLIENT_ID,
-  REDIRECT_URI: process.env.NEXT_PUBLIC_ZOOM_REDIRECT_URI,
-  SCOPE: 'recording:read user:read',
-  BASE_URL: 'https://zoom.us/oauth'
-};
-
-// Safe localStorage utilities for SSR compatibility
-const zoomStorage = {
-  get: (key) => {
-    if (typeof window === 'undefined') return null;
-    try {
-      const item = localStorage.getItem(key);
-      return item ? JSON.parse(item) : null;
-    } catch (error) {
-      console.error(`Error parsing localStorage item ${key}:`, error);
-      localStorage.removeItem(key);
-      return null;
-    }
-  },
+// Helper function to get auth headers from Redux state
+const getAuthHeaders = (getState) => {
+  const token = getState().auth.token;
   
-  set: (key, value) => {
-    if (typeof window === 'undefined') return;
-    try {
-      localStorage.setItem(key, JSON.stringify(value));
-    } catch (error) {
-      console.error(`Error setting localStorage item ${key}:`, error);
-    }
-  },
-  
-  remove: (key) => {
-    if (typeof window === 'undefined') return;
-    try {
-      localStorage.removeItem(key);
-    } catch (error) {
-      console.error(`Error removing localStorage item ${key}:`, error);
-    }
-  },
-  
-  clear: () => {
-    if (typeof window === 'undefined') return;
-    try {
-      Object.values(ZOOM_STORAGE_KEYS).forEach(key => {
-        localStorage.removeItem(key);
-      });
-    } catch (error) {
-      console.error('Error clearing Zoom storage:', error);
-    }
-  }
+  return {
+    'Content-Type': 'application/json',
+    ...(token && { 'Authorization': `Bearer ${token}` }),
+  };
 };
 
 // Helper function to extract error message
-const extractZoomErrorMessage = (error) => {
+const extractErrorMessage = (error) => {
   if (error.response?.data?.message) {
     return error.response.data.message;
   }
   if (error.response?.data?.error) {
     return error.response.data.error;
+  }
+  if (error.response?.data?.detail) {
+    return error.response.data.detail;
   }
   if (error.message) {
     return error.message;
@@ -81,521 +32,575 @@ const extractZoomErrorMessage = (error) => {
   return 'An unexpected error occurred';
 };
 
-// Generate Zoom OAuth URL
-const generateZoomAuthUrl = () => {
-  const params = new URLSearchParams({
-    response_type: 'code',
-    client_id: ZOOM_CONFIG.CLIENT_ID,
-    redirect_uri: ZOOM_CONFIG.REDIRECT_URI,
-    scope: ZOOM_CONFIG.SCOPE,
-    state: Math.random().toString(36).substring(2, 15)
-  });
-
-  return `${ZOOM_CONFIG.BASE_URL}/authorize?${params.toString()}`;
-};
-
-// Async thunk for initiating Zoom OAuth
+// Async thunks for Zoom integration
 export const initiateZoomAuth = createAsyncThunk(
   'zoom/initiateAuth',
-  async (_, { rejectWithValue }) => {
+  async (_, { rejectWithValue, getState }) => {
     try {
-      const authUrl = generateZoomAuthUrl();
+      const headers = getAuthHeaders(getState);
       
-      return new Promise((resolve, reject) => {
-        const popup = window.open(
-          authUrl,
-          'zoomAuth',
-          'width=500,height=700,scrollbars=yes,resizable=yes,top=100,left=100'
-        );
-
-        if (!popup) {
-          reject(new Error('Popup blocked. Please allow popups and try again.'));
-          return;
-        }
-
-        // Poll for popup closure
-        const checkClosed = setInterval(() => {
-          if (popup.closed) {
-            clearInterval(checkClosed);
-            
-            // Check if we have the auth result in localStorage
-            const authResult = zoomStorage.get('zoom_auth_result');
-            if (authResult) {
-              zoomStorage.remove('zoom_auth_result');
-              
-              if (authResult.success) {
-                resolve(authResult);
-              } else {
-                reject(new Error(authResult.error || 'Authentication failed'));
-              }
-            } else {
-              reject(new Error('Authentication cancelled'));
-            }
-          }
-        }, 1000);
-
-        // Timeout after 10 minutes
-        setTimeout(() => {
-          if (!popup.closed) {
-            popup.close();
-            clearInterval(checkClosed);
-            reject(new Error('Authentication timeout'));
-          }
-        }, 600000);
+      const response = await axios.get(`${API_BASE_URL}/integrations/zoom/oauth/start/`, {
+        headers,
       });
-    } catch (error) {
-      console.error('Zoom auth initiation error:', error);
-      return rejectWithValue({ message: extractZoomErrorMessage(error) });
-    }
-  }
-);
-
-// Async thunk for exchanging authorization code for tokens
-export const exchangeZoomCode = createAsyncThunk(
-  'zoom/exchangeCode',
-  async (code, { rejectWithValue }) => {
-    try {
-      if (!code) {
-        throw new Error('Authorization code is required');
-      }
-
-      console.log('Exchanging Zoom authorization code...');
-
-      const response = await axios.post(ZOOM_API_ENDPOINTS.TOKEN_EXCHANGE, { code });
-
-      return {
-        tokens: response.data,
-        message: 'Authorization successful'
-      };
-    } catch (error) {
-      console.error('Zoom token exchange error:', error);
-      const message = extractZoomErrorMessage(error);
-      return rejectWithValue({ message, code: error.response?.status });
-    }
-  }
-);
-
-// Async thunk for fetching Zoom user info
-export const fetchZoomUserInfo = createAsyncThunk(
-  'zoom/fetchUserInfo',
-  async (accessToken, { rejectWithValue }) => {
-    try {
-      if (!accessToken) {
-        throw new Error('Access token is required');
-      }
-
-      console.log('Fetching Zoom user info...');
-
-      const response = await axios.get(ZOOM_API_ENDPOINTS.USER_INFO, {
-        headers: {
-          'Authorization': `Bearer ${accessToken}`
-        }
-      });
-
+      
       return response.data;
     } catch (error) {
-      console.error('Zoom user info fetch error:', error);
-      const message = extractZoomErrorMessage(error);
+      console.error('Zoom auth initiation error:', error);
+      const message = extractErrorMessage(error);
       return rejectWithValue({ message, code: error.response?.status });
     }
   }
 );
 
-// Async thunk for fetching Zoom recordings
-export const fetchZoomRecordings = createAsyncThunk(
-  'zoom/fetchRecordings',
-  async ({ accessToken, from, to, pageSize = 30 }, { rejectWithValue }) => {
+export const handleZoomCallback = createAsyncThunk(
+  'zoom/handleCallback',
+  async ({ code, state }, { rejectWithValue, getState }) => {
     try {
-      if (!accessToken) {
-        throw new Error('Access token is required');
-      }
-
-      console.log('Fetching Zoom recordings...');
-
-      const params = new URLSearchParams();
-      if (from) params.append('from', from);
-      if (to) params.append('to', to);
-      params.append('page_size', pageSize.toString());
-
-      const response = await axios.get(`${ZOOM_API_ENDPOINTS.RECORDINGS}?${params.toString()}`, {
-        headers: {
-          'Authorization': `Bearer ${accessToken}`
-        }
+      // Since your Django view handles this via URL params and redirects,
+      // we'll just make a request to check the status after callback
+      // The actual OAuth flow is handled by the redirect in your Django view
+      
+      // Wait a moment for the backend to process
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      
+      // Check connection status to see if the OAuth was successful
+      const headers = getAuthHeaders(getState);
+      const statusResponse = await axios.get(`${API_BASE_URL}/integrations/zoom/status/`, {
+        headers,
       });
-
-      return {
-        recordings: response.data.meetings || [],
-        total: response.data.total_records || 0,
-        page_count: response.data.page_count || 1,
-        from,
-        to
-      };
+      alert("Hello")
+      
+      if (statusResponse.data.is_connected) {
+        return {
+          success: true,
+          user_info: statusResponse.data.user_info,
+          token_expiry: statusResponse.data.token_expiry,
+          message: 'Successfully connected to Zoom!'
+        };
+      } else {
+        throw new Error('OAuth callback completed but connection was not established');
+      }
     } catch (error) {
-      console.error('Zoom recordings fetch error:', error);
-      const message = extractZoomErrorMessage(error);
+      console.error('Zoom callback handling error:', error);
+      const message = extractErrorMessage(error);
       return rejectWithValue({ message, code: error.response?.status });
     }
   }
 );
 
-// Async thunk for refreshing Zoom access token
+export const getZoomConnectionStatus = createAsyncThunk(
+  'zoom/getConnectionStatus',
+  async (_, { rejectWithValue, getState }) => {
+    try {
+      const headers = getAuthHeaders(getState);
+      
+      const response = await axios.get(`${API_BASE_URL}/integrations/zoom/status/`, {
+        headers,
+      });
+      
+      return response.data;
+    } catch (error) {
+      console.error('Zoom connection status error:', error);
+      
+      // If the endpoint doesn't exist (404), return disconnected status
+      if (error.response?.status === 404) {
+        return {
+          is_connected: false,
+          user_info: null,
+          token_expiry: null,
+          is_token_expired: false,
+        };
+      }
+      
+      const message = extractErrorMessage(error);
+      return rejectWithValue({ message, code: error.response?.status });
+    }
+  }
+);
+
+export const disconnectZoom = createAsyncThunk(
+  'zoom/disconnect',
+  async (_, { rejectWithValue, getState }) => {
+    try {
+      const headers = getAuthHeaders(getState);
+      
+      const response = await axios.post(`${API_BASE_URL}/integrations/zoom/disconnect/`, {}, {
+        headers,
+      });
+      
+      return response.data;
+    } catch (error) {
+      console.error('Zoom disconnect error:', error);
+      const message = extractErrorMessage(error);
+      return rejectWithValue({ message, code: error.response?.status });
+    }
+  }
+);
+
 export const refreshZoomToken = createAsyncThunk(
   'zoom/refreshToken',
   async (_, { rejectWithValue, getState }) => {
     try {
-      const refreshToken = getState().zoom.refreshToken || zoomStorage.get(ZOOM_STORAGE_KEYS.REFRESH_TOKEN);
+      const headers = getAuthHeaders(getState);
       
-      if (!refreshToken) {
-        throw new Error('No refresh token available');
-      }
-
-      console.log('Refreshing Zoom access token...');
-
-      const response = await axios.post(ZOOM_API_ENDPOINTS.REFRESH_TOKEN, { 
-        refresh_token: refreshToken 
+      const response = await axios.post(`${API_BASE_URL}/integrations/zoom/refresh-token/`, {}, {
+        headers,
       });
-
-      const { access_token, refresh_token: newRefreshToken } = response.data;
-
-      // Update stored tokens
-      zoomStorage.set(ZOOM_STORAGE_KEYS.ACCESS_TOKEN, access_token);
-      if (newRefreshToken) {
-        zoomStorage.set(ZOOM_STORAGE_KEYS.REFRESH_TOKEN, newRefreshToken);
-      }
-
-      return {
-        accessToken: access_token,
-        refreshToken: newRefreshToken || refreshToken
-      };
+      
+      return response.data;
     } catch (error) {
       console.error('Zoom token refresh error:', error);
-      
-      // If refresh fails, clear stored data
-      zoomStorage.clear();
-      
-      const message = extractZoomErrorMessage(error);
+      const message = extractErrorMessage(error);
       return rejectWithValue({ message, code: error.response?.status });
     }
   }
 );
 
-// Async thunk for complete Zoom connection flow
-export const connectToZoom = createAsyncThunk(
-  'zoom/connect',
-  async (_, { dispatch, rejectWithValue }) => {
+// Updated createZoomMeeting action to match your backend API
+export const createZoomMeeting = createAsyncThunk(
+  'zoom/createMeeting',
+  async ({ meetingData, organizationId }, { rejectWithValue, getState }) => {
     try {
-      console.log('Starting Zoom connection flow...');
-
-      // Step 1: Initiate OAuth
-      const authResult = await dispatch(initiateZoomAuth()).unwrap();
+      const headers = getAuthHeaders(getState);
       
-      // Step 2: Exchange code for tokens
-      const tokenResult = await dispatch(exchangeZoomCode(authResult.code)).unwrap();
+      // Use the correct API endpoint that matches your backend
+      const response = await axios.post(
+        `${API_BASE_URL2}/meetings/zoom/create-meetings/${organizationId}/`,
+        meetingData,
+        { headers }
+      );
       
-      // Step 3: Fetch user info
-      const userInfo = await dispatch(fetchZoomUserInfo(tokenResult.tokens.access_token)).unwrap();
-      
-      // Step 4: Store connection data
-      const connectionData = {
-        user: userInfo,
-        tokens: tokenResult.tokens,
-        connected_at: new Date().toISOString(),
-        platform: 'zoom'
-      };
-      
-      zoomStorage.set(ZOOM_STORAGE_KEYS.CONNECTION, connectionData);
-      zoomStorage.set(ZOOM_STORAGE_KEYS.ACCESS_TOKEN, tokenResult.tokens.access_token);
-      if (tokenResult.tokens.refresh_token) {
-        zoomStorage.set(ZOOM_STORAGE_KEYS.REFRESH_TOKEN, tokenResult.tokens.refresh_token);
-      }
-      zoomStorage.set(ZOOM_STORAGE_KEYS.USER_INFO, userInfo);
-
-      return {
-        ...connectionData,
-        message: 'Successfully connected to Zoom!'
-      };
+      return response.data;
     } catch (error) {
-      console.error('Zoom connection flow error:', error);
-      return rejectWithValue({ 
-        message: error.message || 'Failed to connect to Zoom' 
-      });
+      console.error('Zoom meeting creation error:', error);
+      const message = extractErrorMessage(error);
+      return rejectWithValue({ message, code: error.response?.status });
     }
   }
 );
 
-// Initial state
+// In your zoomSlice.js, update the getZoomMeetings thunk:
+export const getZoomMeetings = createAsyncThunk(
+  'zoom/getMeetings',
+  async (organizationId, { rejectWithValue, getState }) => {
+    try {
+      const headers = getAuthHeaders(getState);
+      
+      // Use organization ID in the URL
+      const response = await axios.get(`${API_BASE_URL2}/meetings/zoom/list-meetings/${organizationId}/`, {
+        headers,
+      });
+      
+      return response.data;
+    } catch (error) {
+      console.error('Zoom meetings fetch error:', error);
+      const message = extractErrorMessage(error);
+      return rejectWithValue({ message, code: error.response?.status });
+    }
+  }
+);
+
+export const updateZoomMeeting = createAsyncThunk(
+  'zoom/updateMeeting',
+  async ({ meetingId, updateData }, { rejectWithValue, getState }) => {
+    try {
+      const headers = getAuthHeaders(getState);
+      
+      const response = await axios.patch(`${API_BASE_URL}/integrations/zoom/meetings/${meetingId}/`, updateData, {
+        headers,
+      });
+      
+      return response.data;
+    } catch (error) {
+      console.error('Zoom meeting update error:', error);
+      const message = extractErrorMessage(error);
+      return rejectWithValue({ message, code: error.response?.status });
+    }
+  }
+);
+
+export const deleteZoomMeeting = createAsyncThunk(
+  'zoom/deleteMeeting',
+  async (meetingId, { rejectWithValue, getState }) => {
+    try {
+      const headers = getAuthHeaders(getState);
+      
+      await axios.delete(`${API_BASE_URL}/integrations/zoom/meetings/${meetingId}/`, {
+        headers,
+      });
+      
+      return { meetingId };
+    } catch (error) {
+      console.error('Zoom meeting deletion error:', error);
+      const message = extractErrorMessage(error);
+      return rejectWithValue({ message, code: error.response?.status });
+    }
+  }
+);
+
+export const getMeetingDetails = createAsyncThunk(
+  'zoom/getMeetingDetails',
+  async (meetingId, { rejectWithValue, getState }) => {
+    try {
+      const headers = getAuthHeaders(getState);
+      
+      // Use the correct API endpoint that matches your backend
+      const response = await axios.get(
+        `${API_BASE_URL2}/meetings/zoom/meeting-details/${meetingId}/`,
+        { headers }
+      );
+      
+      return response.data;
+    } catch (error) {
+      console.error('Meeting details fetch error:', error);
+      const message = extractErrorMessage(error);
+      return rejectWithValue({ message, code: error.response?.status });
+    }
+  }
+);
+
 const initialState = {
-  // Connection state
+  // Connection status
   isConnected: false,
-  connectionStatus: 'disconnected', // disconnected, connecting, connected, error
-  user: zoomStorage.get(ZOOM_STORAGE_KEYS.USER_INFO),
-  accessToken: zoomStorage.get(ZOOM_STORAGE_KEYS.ACCESS_TOKEN),
-  refreshToken: zoomStorage.get(ZOOM_STORAGE_KEYS.REFRESH_TOKEN),
-  connectionData: zoomStorage.get(ZOOM_STORAGE_KEYS.CONNECTION),
+  connectionStatus: 'disconnected', // 'disconnected', 'connecting', 'connected', 'error'
   
-  // Recordings state
-  recordings: [],
-  recordingsMetadata: {
-    total: 0,
-    pageCount: 0,
-    from: null,
-    to: null
-  },
+  // User info
+  userInfo: null,
   
-  // Loading states
+  // Auth data
+  authUrl: null,
+  accessToken: null,
+  refreshToken: null,
+  tokenExpiry: null,
+  
+  // Integrations
+  integrations: [],
+  
+  // Meetings
+  meetings: [],
+  currentMeeting: null,
+  
+  // UI state
   loading: false,
-  connecting: false,
-  fetchingRecordings: false,
-  refreshingToken: false,
-  
-  // Messages
   error: null,
   successMessage: null,
   
-  // Last activity
-  lastRecordingsFetch: null,
-  lastTokenRefresh: null
+  // Modal state
+  showConnectionModal: false,
+  showDisconnectModal: false,
 };
-
-// Set initial connection state
-if (initialState.accessToken && initialState.user) {
-  initialState.isConnected = true;
-  initialState.connectionStatus = 'connected';
-}
 
 const zoomSlice = createSlice({
   name: 'zoom',
   initialState,
   reducers: {
-    // Clear error messages
-    clearZoomError: (state) => {
-      state.error = null;
-    },
-    
-    // Clear success messages
-    clearZoomSuccess: (state) => {
-      state.successMessage = null;
-    },
-    
-    // Clear all messages
-    clearZoomMessages: (state) => {
+    // UI actions
+    clearMessages: (state) => {
       state.error = null;
       state.successMessage = null;
     },
+    setShowConnectionModal: (state, action) => {
+      state.showConnectionModal = action.payload;
+    },
+    setShowDisconnectModal: (state, action) => {
+      state.showDisconnectModal = action.payload;
+    },
+    resetZoomState: (state) => {
+      return { ...initialState };
+    },
     
-    // Set connection status
+    // Connection management
     setConnectionStatus: (state, action) => {
       state.connectionStatus = action.payload;
     },
     
-    // Disconnect from Zoom
-    disconnectZoom: (state) => {
-      state.isConnected = false;
-      state.connectionStatus = 'disconnected';
-      state.user = null;
-      state.accessToken = null;
-      state.refreshToken = null;
-      state.connectionData = null;
-      state.recordings = [];
-      state.recordingsMetadata = {
-        total: 0,
-        pageCount: 0,
-        from: null,
-        to: null
-      };
-      state.error = null;
-      state.successMessage = 'Disconnected from Zoom';
-      
-      // Clear storage
-      zoomStorage.clear();
+    // Meeting management
+    setCurrentMeeting: (state, action) => {
+      state.currentMeeting = action.payload;
     },
-    
-    // Hydrate zoom state from localStorage
-    hydrateZoomState: (state) => {
-      const storedConnection = zoomStorage.get(ZOOM_STORAGE_KEYS.CONNECTION);
-      const storedToken = zoomStorage.get(ZOOM_STORAGE_KEYS.ACCESS_TOKEN);
-      const storedUser = zoomStorage.get(ZOOM_STORAGE_KEYS.USER_INFO);
-      const storedRefreshToken = zoomStorage.get(ZOOM_STORAGE_KEYS.REFRESH_TOKEN);
-      
-      if (storedConnection && storedToken && storedUser) {
-        state.isConnected = true;
-        state.connectionStatus = 'connected';
-        state.connectionData = storedConnection;
-        state.accessToken = storedToken;
-        state.refreshToken = storedRefreshToken;
-        state.user = storedUser;
-      } else {
-        // Clear inconsistent state
-        zoomStorage.clear();
-        state.isConnected = false;
-        state.connectionStatus = 'disconnected';
+    addMeeting: (state, action) => {
+      state.meetings.push(action.payload);
+    },
+    updateMeetingInState: (state, action) => {
+      const index = state.meetings.findIndex(meeting => meeting.id === action.payload.id);
+      if (index !== -1) {
+        state.meetings[index] = { ...state.meetings[index], ...action.payload };
       }
     },
-    
-    // Update recordings manually (for real-time updates)
-    updateRecordings: (state, action) => {
-      state.recordings = action.payload;
+    removeMeetingFromState: (state, action) => {
+      state.meetings = state.meetings.filter(meeting => meeting.id !== action.payload);
     },
-    
-    // Add new recording
-    addRecording: (state, action) => {
-      state.recordings.unshift(action.payload);
-      state.recordingsMetadata.total += 1;
-    }
   },
-  
   extraReducers: (builder) => {
+    // Initiate Zoom Auth
     builder
-      // Initiate Zoom Auth
       .addCase(initiateZoomAuth.pending, (state) => {
-        state.connecting = true;
         state.loading = true;
-        state.connectionStatus = 'connecting';
         state.error = null;
-        state.successMessage = null;
+        state.connectionStatus = 'connecting';
       })
       .addCase(initiateZoomAuth.fulfilled, (state, action) => {
-        state.connecting = false;
         state.loading = false;
-        // Auth initiated successfully, continue with token exchange
+        state.authUrl = action.payload.authorize_url;
+        state.successMessage = 'Redirecting to Zoom for authentication...';
       })
       .addCase(initiateZoomAuth.rejected, (state, action) => {
-        state.connecting = false;
         state.loading = false;
-        state.connectionStatus = 'error';
         state.error = action.payload?.message || 'Failed to initiate Zoom authentication';
-        state.successMessage = null;
-      })
-      
-      // Exchange Code
-      .addCase(exchangeZoomCode.pending, (state) => {
-        state.connecting = true;
-        state.loading = true;
-        state.error = null;
-      })
-      .addCase(exchangeZoomCode.fulfilled, (state, action) => {
-        state.connecting = false;
-        state.loading = false;
-        state.accessToken = action.payload.tokens.access_token;
-        state.refreshToken = action.payload.tokens.refresh_token;
-      })
-      .addCase(exchangeZoomCode.rejected, (state, action) => {
-        state.connecting = false;
-        state.loading = false;
         state.connectionStatus = 'error';
-        state.error = action.payload?.message || 'Failed to exchange authorization code';
-      })
-      
-      // Fetch User Info
-      .addCase(fetchZoomUserInfo.pending, (state) => {
+      });
+
+    // Handle Zoom Callback
+    builder
+      .addCase(handleZoomCallback.pending, (state) => {
         state.loading = true;
         state.error = null;
       })
-      .addCase(fetchZoomUserInfo.fulfilled, (state, action) => {
-        state.loading = false;
-        state.user = action.payload;
-      })
-      .addCase(fetchZoomUserInfo.rejected, (state, action) => {
-        state.loading = false;
-        state.connectionStatus = 'error';
-        state.error = action.payload?.message || 'Failed to fetch user information';
-      })
-      
-      // Connect to Zoom (complete flow)
-      .addCase(connectToZoom.pending, (state) => {
-        state.connecting = true;
-        state.loading = true;
-        state.connectionStatus = 'connecting';
-        state.error = null;
-        state.successMessage = null;
-      })
-      .addCase(connectToZoom.fulfilled, (state, action) => {
-        state.connecting = false;
+      .addCase(handleZoomCallback.fulfilled, (state, action) => {
         state.loading = false;
         state.isConnected = true;
         state.connectionStatus = 'connected';
-        state.user = action.payload.user;
-        state.accessToken = action.payload.tokens.access_token;
-        state.refreshToken = action.payload.tokens.refresh_token;
-        state.connectionData = action.payload;
+        state.userInfo = action.payload.user_info;
+        state.tokenExpiry = action.payload.token_expiry;
         state.successMessage = action.payload.message;
-        state.error = null;
+        state.showConnectionModal = false;
       })
-      .addCase(connectToZoom.rejected, (state, action) => {
-        state.connecting = false;
+      .addCase(handleZoomCallback.rejected, (state, action) => {
         state.loading = false;
+        state.error = action.payload?.message || 'Failed to complete Zoom authentication';
         state.connectionStatus = 'error';
-        state.error = action.payload?.message || 'Failed to connect to Zoom';
-        state.successMessage = null;
-      })
-      
-      // Fetch Recordings
-      .addCase(fetchZoomRecordings.pending, (state) => {
-        state.fetchingRecordings = true;
+      });
+
+    // Get Connection Status
+    builder
+      .addCase(getZoomConnectionStatus.pending, (state) => {
+        state.loading = true;
         state.error = null;
       })
-      .addCase(fetchZoomRecordings.fulfilled, (state, action) => {
-        state.fetchingRecordings = false;
-        state.recordings = action.payload.recordings;
-        state.recordingsMetadata = {
-          total: action.payload.total,
-          pageCount: action.payload.page_count,
-          from: action.payload.from,
-          to: action.payload.to
-        };
-        state.lastRecordingsFetch = new Date().toISOString();
+      .addCase(getZoomConnectionStatus.fulfilled, (state, action) => {
+        state.loading = false;
+        state.isConnected = action.payload.is_connected;
+        state.connectionStatus = action.payload.is_connected ? 'connected' : 'disconnected';
+        if (action.payload.is_connected) {
+          state.userInfo = action.payload.user_info;
+          state.tokenExpiry = action.payload.token_expiry;
+        } else {
+          state.userInfo = null;
+          state.tokenExpiry = null;
+        }
       })
-      .addCase(fetchZoomRecordings.rejected, (state, action) => {
-        state.fetchingRecordings = false;
-        state.error = action.payload?.message || 'Failed to fetch recordings';
-      })
-      
-      // Refresh Token
-      .addCase(refreshZoomToken.pending, (state) => {
-        state.refreshingToken = true;
-      })
-      .addCase(refreshZoomToken.fulfilled, (state, action) => {
-        state.refreshingToken = false;
-        state.accessToken = action.payload.accessToken;
-        state.refreshToken = action.payload.refreshToken;
-        state.lastTokenRefresh = new Date().toISOString();
+      .addCase(getZoomConnectionStatus.rejected, (state, action) => {
+        state.loading = false;
+        state.error = action.payload?.message || 'Failed to get connection status';
+        state.connectionStatus = 'error';
+      });
+
+    // Disconnect Zoom
+    builder
+      .addCase(disconnectZoom.pending, (state) => {
+        state.loading = true;
         state.error = null;
       })
-      .addCase(refreshZoomToken.rejected, (state, action) => {
-        state.refreshingToken = false;
+      .addCase(disconnectZoom.fulfilled, (state, action) => {
+        state.loading = false;
         state.isConnected = false;
         state.connectionStatus = 'disconnected';
-        state.user = null;
         state.accessToken = null;
         state.refreshToken = null;
-        state.connectionData = null;
-        state.error = action.payload?.message || 'Token refresh failed';
+        state.tokenExpiry = null;
+        state.userInfo = null;
+        state.integrations = [];
+        state.meetings = [];
+        state.currentMeeting = null;
+        state.successMessage = action.payload.message || 'Successfully disconnected from Zoom';
+        state.showDisconnectModal = false;
+      })
+      .addCase(disconnectZoom.rejected, (state, action) => {
+        state.loading = false;
+        state.error = action.payload?.message || 'Failed to disconnect from Zoom';
       });
-  }
+
+    // Refresh Token
+    builder
+      .addCase(refreshZoomToken.pending, (state) => {
+        state.loading = true;
+        state.error = null;
+      })
+      .addCase(refreshZoomToken.fulfilled, (state, action) => {
+        state.loading = false;
+        state.accessToken = action.payload.access_token;
+        state.tokenExpiry = action.payload.token_expiry;
+        state.successMessage = action.payload.message || 'Token refreshed successfully';
+      })
+      .addCase(refreshZoomToken.rejected, (state, action) => {
+        state.loading = false;
+        state.error = action.payload?.message || 'Failed to refresh token';
+        // If refresh fails, user might need to reconnect
+        if (action.payload?.message?.includes('invalid') || action.payload?.message?.includes('expired')) {
+          state.isConnected = false;
+          state.connectionStatus = 'disconnected';
+          state.accessToken = null;
+          state.refreshToken = null;
+          state.userInfo = null;
+        }
+      });
+
+      // Get Meeting Details
+builder
+.addCase(getMeetingDetails.pending, (state) => {
+  state.loading = true;
+  state.error = null;
+})
+.addCase(getMeetingDetails.fulfilled, (state, action) => {
+  state.loading = false;
+  state.currentMeeting = action.payload;
+})
+.addCase(getMeetingDetails.rejected, (state, action) => {
+  state.loading = false;
+  state.error = action.payload?.message || 'Failed to get meeting details';
+});
+
+
+    // Create Meeting
+    builder
+      .addCase(createZoomMeeting.pending, (state) => {
+        state.loading = true;
+        state.error = null;
+      })
+      .addCase(createZoomMeeting.fulfilled, (state, action) => {
+        state.loading = false;
+        const meeting = action.payload.meeting || action.payload;
+        state.meetings.push(meeting);
+        state.currentMeeting = meeting;
+        state.successMessage = 'Zoom meeting created successfully!';
+      })
+      .addCase(createZoomMeeting.rejected, (state, action) => {
+        state.loading = false;
+        state.error = action.payload?.message || 'Failed to create Zoom meeting';
+      });
+
+    // Get Meetings
+    builder
+      .addCase(getZoomMeetings.pending, (state) => {
+        state.loading = true;
+        state.error = null;
+      })
+      .addCase(getZoomMeetings.fulfilled, (state, action) => {
+        state.loading = false;
+        state.meetings = action.payload.meetings || action.payload;
+      })
+      .addCase(getZoomMeetings.rejected, (state, action) => {
+        state.loading = false;
+        state.error = action.payload?.message || 'Failed to get Zoom meetings';
+      });
+
+    // Update Meeting
+    builder
+      .addCase(updateZoomMeeting.pending, (state) => {
+        state.loading = true;
+        state.error = null;
+      })
+      .addCase(updateZoomMeeting.fulfilled, (state, action) => {
+        state.loading = false;
+        const updatedMeeting = action.payload.meeting || action.payload;
+        const index = state.meetings.findIndex(meeting => meeting.id === updatedMeeting.id);
+        if (index !== -1) {
+          state.meetings[index] = updatedMeeting;
+        }
+        state.successMessage = 'Meeting updated successfully!';
+      })
+      .addCase(updateZoomMeeting.rejected, (state, action) => {
+        state.loading = false;
+        state.error = action.payload?.message || 'Failed to update meeting';
+      });
+
+    // Delete Meeting
+    builder
+      .addCase(deleteZoomMeeting.pending, (state) => {
+        state.loading = true;
+        state.error = null;
+      })
+      .addCase(deleteZoomMeeting.fulfilled, (state, action) => {
+        state.loading = false;
+        state.meetings = state.meetings.filter(meeting => meeting.id !== action.payload.meetingId);
+        if (state.currentMeeting && state.currentMeeting.id === action.payload.meetingId) {
+          state.currentMeeting = null;
+        }
+        state.successMessage = 'Meeting deleted successfully!';
+      })
+      .addCase(deleteZoomMeeting.rejected, (state, action) => {
+        state.loading = false;
+        state.error = action.payload?.message || 'Failed to delete meeting';
+      });
+  },
 });
 
 // Export actions
 export const {
-  clearZoomError,
-  clearZoomSuccess,
-  clearZoomMessages,
+  clearMessages,
+  setShowConnectionModal,
+  setShowDisconnectModal,
+  resetZoomState,
   setConnectionStatus,
-  disconnectZoom,
-  hydrateZoomState,
-  updateRecordings,
-  addRecording
+  setCurrentMeeting,
+  addMeeting,
+  updateMeetingInState,
+  removeMeetingFromState,
 } = zoomSlice.actions;
 
 // Selectors
-export const selectZoom = (state) => state.zoom;
-export const selectZoomConnection = (state) => state.zoom.isConnected;
+export const selectZoomIsConnected = (state) => state.zoom.isConnected;
 export const selectZoomConnectionStatus = (state) => state.zoom.connectionStatus;
-export const selectZoomUser = (state) => state.zoom.user;
-export const selectZoomRecordings = (state) => state.zoom.recordings;
-export const selectZoomRecordingsMetadata = (state) => state.zoom.recordingsMetadata;
+export const selectZoomUserInfo = (state) => state.zoom.userInfo;
+export const selectZoomAuthUrl = (state) => state.zoom.authUrl;
+export const selectZoomIntegrations = (state) => state.zoom.integrations;
+export const selectZoomMeetings = (state) => state.zoom.meetings;
+export const selectZoomCurrentMeeting = (state) => state.zoom.currentMeeting;
 export const selectZoomLoading = (state) => state.zoom.loading;
 export const selectZoomError = (state) => state.zoom.error;
 export const selectZoomSuccessMessage = (state) => state.zoom.successMessage;
-export const selectZoomFetchingRecordings = (state) => state.zoom.fetchingRecordings;
+export const selectZoomShowConnectionModal = (state) => state.zoom.showConnectionModal;
+export const selectZoomShowDisconnectModal = (state) => state.zoom.showDisconnectModal;
+export const selectZoomTokenExpiry = (state) => state.zoom.tokenExpiry;
+export const selectCurrentMeetingDetails = (state) => state.zoom.currentMeeting;
+
+// Helper selectors
+export const selectIsZoomTokenExpired = (state) => {
+  const expiry = state.zoom.tokenExpiry;
+  if (!expiry) return false;
+  return new Date(expiry) <= new Date();
+};
+
+export const selectZoomConnectionDisplay = (state) => {
+  const status = state.zoom.connectionStatus;
+  const userInfo = state.zoom.userInfo;
+  
+  switch (status) {
+    case 'connected':
+      return {
+        status: 'Connected',
+        message: userInfo ? `Connected as ${userInfo.email || userInfo.first_name}` : 'Connected to Zoom',
+        color: 'green',
+      };
+    case 'connecting':
+      return {
+        status: 'Connecting',
+        message: 'Connecting to Zoom...',
+        color: 'yellow',
+      };
+    case 'error':
+      return {
+        status: 'Error',
+        message: 'Connection failed',
+        color: 'red',
+      };
+    default:
+      return {
+        status: 'Disconnected',
+        message: 'Not connected to Zoom',
+        color: 'gray',
+      };
+  }
+};
 
 export default zoomSlice.reducer;

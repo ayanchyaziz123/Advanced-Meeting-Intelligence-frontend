@@ -1,130 +1,16 @@
 'use client';
 
-import { useState } from 'react';
 import Link from 'next/link';
 import { useSelector } from 'react-redux';
 import { selectIsAuthenticated } from '../redux/auth/authSlices'; // Adjust path as needed
 import ManageOrganizations from '../../src/app/components/ManageOrganizations';
 
-// Mock data for organizations
-const MOCK_ORGANIZATIONS = [
-  {
-    id: 1,
-    name: 'Next Generation Innovation L.L.C.',
-    logo: '/logo_ngi.avif',
-    meetingCount: 7
-  },
-  {
-    id: 2,
-    name: 'Freelance Designers Hub',
-    logo: '/logos/freelance_designers.png',
-    meetingCount: 5
-  },
-  {
-    id: 3,
-    name: 'CodeCrafters Team',
-    logo: '/logos/codecrafters_team.png',
-    meetingCount: 11
-  },
-  {
-    id: 4,
-    name: 'Local Entrepreneurs Network',
-    logo: '/logos/local_entrepreneurs.png',
-    meetingCount: 6
-  },
-  {
-    id: 5,
-    name: 'TechBridge Community',
-    logo: '/logos/techbridge_community.png',
-    meetingCount: 8
-  },
-  {
-    id: 6,
-    name: 'Neighborhood Book Club',
-    logo: '/logos/book_club.png',
-    meetingCount: 4
-  }
-];
-
-// Platform button data
-const PLATFORMS = [
-  {
-    id: 'zoom',
-    name: 'Zoom',
-    icon: (
-      <svg className="w-6 h-6" viewBox="0 0 24 24" fill="currentColor">
-        <path d="M3.51 8.95c-.65.41-1.05 1.11-1.05 1.87v8.36c0 1.24 1.01 2.25 2.25 2.25h8c.76 0 1.46-.4 1.87-1.05L3.51 8.95zM20.49 15.05c.65-.41 1.05-1.11 1.05-1.87V4.82c0-1.24-1.01-2.25-2.25-2.25h-8c-.76 0-1.46.4-1.87 1.05l11.07 11.43z"/>
-      </svg>
-    ),
-    enabled: true,
-    bgColor: 'bg-blue-600',
-    hoverColor: 'hover:bg-blue-700',
-    description: 'Connect to retrieve your Zoom recordings'
-  },
-  {
-    id: 'google-meet',
-    name: 'Google Meet',
-    icon: (
-      <svg className="w-6 h-6" viewBox="0 0 24 24" fill="currentColor">
-        <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.94-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z"/>
-      </svg>
-    ),
-    enabled: false,
-    bgColor: 'bg-gray-400',
-    hoverColor: 'hover:bg-gray-500',
-    description: 'Coming soon - Retrieve Google Meet recordings'
-  },
-  {
-    id: 'ms-teams',
-    name: 'MS Teams',
-    icon: (
-      <svg className="w-6 h-6" viewBox="0 0 24 24" fill="currentColor">
-        <path d="M20.7 6.24A6.23 6.23 0 0018.4 2.5C16.8 1.4 14.8 1.4 13.2 2.5c-1.6 1.1-2.6 2.9-2.6 4.8v1.2c-1.5-.8-3.2-1.2-5-1.2C2.5 7.3 0 9.8 0 13s2.5 5.7 5.6 5.7c1.8 0 3.5-.4 5-1.2v1.2c0 1.9 1 3.7 2.6 4.8 1.6 1.1 3.6 1.1 5.2 0a6.23 6.23 0 002.3-3.74c.5-1.9.2-3.9-.8-5.57.5-.6.8-1.4.8-2.2s-.3-1.6-.8-2.2c1-1.67 1.3-3.67.8-5.57z"/>
-      </svg>
-    ),
-    enabled: false,
-    bgColor: 'bg-gray-400',
-    hoverColor: 'hover:bg-gray-500',
-    description: 'Coming soon - Retrieve Microsoft Teams recordings'
-  }
-];
-
 // Organizations component for authenticated users
 function OrganizationsPage() {
-  const [selectedPlatform, setSelectedPlatform] = useState('zoom');
-
-  const handlePlatformSelect = (platformId) => {
-    const platform = PLATFORMS.find(p => p.id === platformId);
-    if (platform && platform.enabled) {
-      setSelectedPlatform(platformId);
-      console.log(`Selected platform: ${platform.name}`);
-    }
-  };
-
-  const handleConnectZoom = () => {
-    if (selectedPlatform === 'zoom') {
-      // Create sample Zoom OAuth URL for demonstration
-      const sampleZoomAuthUrl = 'https://zoom.us/oauth/authorize?' + 
-        'response_type=code&' +
-        'client_id=YOUR_CLIENT_ID&' +
-        'redirect_uri=' + encodeURIComponent('http://localhost:3000/auth/zoom/callback') + '&' +
-        'scope=recording:read user:read&' +
-        'state=sample_state_123';
-      
-      console.log('Redirecting to Zoom OAuth...');
-      console.log('Zoom Auth URL:', sampleZoomAuthUrl);
-      
-      // Redirect to Zoom OAuth (sample)
-      window.location.href = sampleZoomAuthUrl;
-    }
-  };
-
-  return (
-    <ManageOrganizations/>
-  );
+  return <ManageOrganizations />;
 }
 
-// Landing page component for unauthenticated users (unchanged)
+// Landing page component for unauthenticated users
 function LandingPage() {
   return (
     <div className="bg-white">

@@ -9,13 +9,14 @@ const AUTH_STORAGE_KEYS = {
 };
 
 const API_ENDPOINTS = {
-  REGISTER: 'https://actionboard-backend-cdqe.onrender.com/api/auth/register/',
-  VERIFY_OTP: 'https://actionboard-backend-cdqe.onrender.com/api/auth/verify-otp/',
+  REGISTER: 'https://actionboard-backend-1.onrender.com/api/auth/register/',
+  VERIFY_OTP: 'https://actionboard-backend-1.onrender.com/api/auth/verify-otp/',
   RESEND_OTP: '/api/auth/resend-otp',
-  LOGIN: 'https://actionboard-backend-cdqe.onrender.com/api/auth/signin/',
+  LOGIN: 'https://actionboard-backend-1.onrender.com/api/auth/signin/',
   REFRESH: '/api/auth/refresh',
   LOGOUT: '/api/auth/logout'
 };
+
 
 // Safe localStorage utilities for SSR compatibility
 const storage = {

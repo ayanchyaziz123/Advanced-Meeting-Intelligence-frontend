@@ -2,8 +2,8 @@ import { createSlice, createAsyncThunk } from '@reduxjs/toolkit';
 import axios from 'axios';
 
 // Base URL for your backend
-const API_BASE_URL = 'https://actionboard-backend-cdqe.onrender.com/api';
-const API_BASE_URL2 = 'https://actionboard-backend-cdqe.onrender.com/api';
+const API_BASE_URL = 'https://actionboard-backend-1.onrender.com/api';
+const API_BASE_URL2 = 'https://actionboard-backend-1.onrender.com/api';
 
 // Helper function to get auth headers from Redux state
 const getAuthHeaders = (getState) => {
@@ -32,15 +32,22 @@ const extractErrorMessage = (error) => {
   return 'An unexpected error occurred';
 };
 
-// Async thunks for Zoom integration
+// Async thunks for Zoom integration with organization support
 export const initiateZoomAuth = createAsyncThunk(
   'zoom/initiateAuth',
-  async (_, { rejectWithValue, getState }) => {
+  async (organizationId, { rejectWithValue, getState }) => {
     try {
       const headers = getAuthHeaders(getState);
       
+      if (!organizationId) {
+        return rejectWithValue({ message: 'Organization ID is required' });
+      }
+      
       const response = await axios.get(`${API_BASE_URL}/integrations/zoom/oauth/start/`, {
         headers,
+        params: {
+          org_id: organizationId
+        }
       });
       
       return response.data;
@@ -54,7 +61,7 @@ export const initiateZoomAuth = createAsyncThunk(
 
 export const handleZoomCallback = createAsyncThunk(
   'zoom/handleCallback',
-  async ({ code, state }, { rejectWithValue, getState }) => {
+  async ({ code, state, organizationId }, { rejectWithValue, getState }) => {
     try {
       // Since your Django view handles this via URL params and redirects,
       // we'll just make a request to check the status after callback
@@ -67,8 +74,10 @@ export const handleZoomCallback = createAsyncThunk(
       const headers = getAuthHeaders(getState);
       const statusResponse = await axios.get(`${API_BASE_URL}/integrations/zoom/status/`, {
         headers,
+        params: {
+          org_id: organizationId
+        }
       });
-      alert("Hello")
       
       if (statusResponse.data.is_connected) {
         return {
@@ -90,12 +99,19 @@ export const handleZoomCallback = createAsyncThunk(
 
 export const getZoomConnectionStatus = createAsyncThunk(
   'zoom/getConnectionStatus',
-  async (_, { rejectWithValue, getState }) => {
+  async (organizationId, { rejectWithValue, getState }) => {
     try {
       const headers = getAuthHeaders(getState);
       
+      if (!organizationId) {
+        return rejectWithValue({ message: 'Organization ID is required' });
+      }
+      
       const response = await axios.get(`${API_BASE_URL}/integrations/zoom/status/`, {
         headers,
+        params: {
+          org_id: organizationId
+        }
       });
       
       return response.data;
@@ -120,11 +136,17 @@ export const getZoomConnectionStatus = createAsyncThunk(
 
 export const disconnectZoom = createAsyncThunk(
   'zoom/disconnect',
-  async (_, { rejectWithValue, getState }) => {
+  async (organizationId, { rejectWithValue, getState }) => {
     try {
       const headers = getAuthHeaders(getState);
       
-      const response = await axios.post(`${API_BASE_URL}/integrations/zoom/disconnect/`, {}, {
+      if (!organizationId) {
+        return rejectWithValue({ message: 'Organization ID is required' });
+      }
+      
+      const response = await axios.post(`${API_BASE_URL}/integrations/zoom/disconnect/`, {
+        org_id: organizationId
+      }, {
         headers,
       });
       
@@ -139,11 +161,17 @@ export const disconnectZoom = createAsyncThunk(
 
 export const refreshZoomToken = createAsyncThunk(
   'zoom/refreshToken',
-  async (_, { rejectWithValue, getState }) => {
+  async (organizationId, { rejectWithValue, getState }) => {
     try {
       const headers = getAuthHeaders(getState);
       
-      const response = await axios.post(`${API_BASE_URL}/integrations/zoom/refresh-token/`, {}, {
+      if (!organizationId) {
+        return rejectWithValue({ message: 'Organization ID is required' });
+      }
+      
+      const response = await axios.post(`${API_BASE_URL}/integrations/zoom/refresh-token/`, {
+        org_id: organizationId
+      }, {
         headers,
       });
       
@@ -162,6 +190,10 @@ export const createZoomMeeting = createAsyncThunk(
   async ({ meetingData, organizationId }, { rejectWithValue, getState }) => {
     try {
       const headers = getAuthHeaders(getState);
+      
+      if (!organizationId) {
+        return rejectWithValue({ message: 'Organization ID is required' });
+      }
       
       // Use the correct API endpoint that matches your backend
       const response = await axios.post(
@@ -186,6 +218,10 @@ export const getZoomMeetings = createAsyncThunk(
     try {
       const headers = getAuthHeaders(getState);
       
+      if (!organizationId) {
+        return rejectWithValue({ message: 'Organization ID is required' });
+      }
+      
       // Use organization ID in the URL
       const response = await axios.get(`${API_BASE_URL2}/meetings/zoom/list-meetings/${organizationId}/`, {
         headers,
@@ -202,11 +238,18 @@ export const getZoomMeetings = createAsyncThunk(
 
 export const updateZoomMeeting = createAsyncThunk(
   'zoom/updateMeeting',
-  async ({ meetingId, updateData }, { rejectWithValue, getState }) => {
+  async ({ meetingId, updateData, organizationId }, { rejectWithValue, getState }) => {
     try {
       const headers = getAuthHeaders(getState);
       
-      const response = await axios.patch(`${API_BASE_URL}/integrations/zoom/meetings/${meetingId}/`, updateData, {
+      if (!organizationId) {
+        return rejectWithValue({ message: 'Organization ID is required' });
+      }
+      
+      const response = await axios.patch(`${API_BASE_URL}/integrations/zoom/meetings/${meetingId}/`, {
+        ...updateData,
+        org_id: organizationId
+      }, {
         headers,
       });
       
@@ -221,12 +264,19 @@ export const updateZoomMeeting = createAsyncThunk(
 
 export const deleteZoomMeeting = createAsyncThunk(
   'zoom/deleteMeeting',
-  async (meetingId, { rejectWithValue, getState }) => {
+  async ({ meetingId, organizationId }, { rejectWithValue, getState }) => {
     try {
       const headers = getAuthHeaders(getState);
       
+      if (!organizationId) {
+        return rejectWithValue({ message: 'Organization ID is required' });
+      }
+      
       await axios.delete(`${API_BASE_URL}/integrations/zoom/meetings/${meetingId}/`, {
         headers,
+        data: {
+          org_id: organizationId
+        }
       });
       
       return { meetingId };
@@ -240,14 +290,23 @@ export const deleteZoomMeeting = createAsyncThunk(
 
 export const getMeetingDetails = createAsyncThunk(
   'zoom/getMeetingDetails',
-  async (meetingId, { rejectWithValue, getState }) => {
+  async ({ meetingId, organizationId }, { rejectWithValue, getState }) => {
     try {
       const headers = getAuthHeaders(getState);
+      
+      if (!organizationId) {
+        return rejectWithValue({ message: 'Organization ID is required' });
+      }
       
       // Use the correct API endpoint that matches your backend
       const response = await axios.get(
         `${API_BASE_URL2}/meetings/zoom/meeting-details/${meetingId}/`,
-        { headers }
+        { 
+          headers,
+          params: {
+            org_id: organizationId
+          }
+        }
       );
       
       return response.data;
@@ -272,6 +331,9 @@ const initialState = {
   accessToken: null,
   refreshToken: null,
   tokenExpiry: null,
+  
+  // Organization context
+  currentOrganizationId: null,
   
   // Integrations
   integrations: [],
@@ -312,6 +374,11 @@ const zoomSlice = createSlice({
     // Connection management
     setConnectionStatus: (state, action) => {
       state.connectionStatus = action.payload;
+    },
+    
+    // Organization management
+    setCurrentOrganization: (state, action) => {
+      state.currentOrganizationId = action.payload;
     },
     
     // Meeting management
@@ -446,20 +513,19 @@ const zoomSlice = createSlice({
       });
 
       // Get Meeting Details
-builder
-.addCase(getMeetingDetails.pending, (state) => {
-  state.loading = true;
-  state.error = null;
-})
-.addCase(getMeetingDetails.fulfilled, (state, action) => {
-  state.loading = false;
-  state.currentMeeting = action.payload;
-})
-.addCase(getMeetingDetails.rejected, (state, action) => {
-  state.loading = false;
-  state.error = action.payload?.message || 'Failed to get meeting details';
-});
-
+    builder
+    .addCase(getMeetingDetails.pending, (state) => {
+      state.loading = true;
+      state.error = null;
+    })
+    .addCase(getMeetingDetails.fulfilled, (state, action) => {
+      state.loading = false;
+      state.currentMeeting = action.payload;
+    })
+    .addCase(getMeetingDetails.rejected, (state, action) => {
+      state.loading = false;
+      state.error = action.payload?.message || 'Failed to get meeting details';
+    });
 
     // Create Meeting
     builder
@@ -542,6 +608,7 @@ export const {
   setShowDisconnectModal,
   resetZoomState,
   setConnectionStatus,
+  setCurrentOrganization,
   setCurrentMeeting,
   addMeeting,
   updateMeetingInState,
@@ -563,6 +630,7 @@ export const selectZoomShowConnectionModal = (state) => state.zoom.showConnectio
 export const selectZoomShowDisconnectModal = (state) => state.zoom.showDisconnectModal;
 export const selectZoomTokenExpiry = (state) => state.zoom.tokenExpiry;
 export const selectCurrentMeetingDetails = (state) => state.zoom.currentMeeting;
+export const selectZoomCurrentOrganization = (state) => state.zoom.currentOrganizationId;
 
 // Helper selectors
 export const selectIsZoomTokenExpired = (state) => {

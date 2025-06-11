@@ -5,6 +5,10 @@ import { useParams, useRouter } from 'next/navigation';
 import { useSelector, useDispatch } from 'react-redux';
 import Link from 'next/link';
 
+
+
+
+
 export default function MeetingDetails() {
   const params = useParams();
   const router = useRouter();
@@ -56,7 +60,7 @@ export default function MeetingDetails() {
         
         // Create AbortController for timeout
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 second timeout
+        const timeoutId = setTimeout(() => controller.abort(), 200000); // 30 second timeout
         
         const response = await fetch(url, {
           ...options,
@@ -377,6 +381,32 @@ export default function MeetingDetails() {
     return transcript || summary || meeting_insights;
   };
 
+  // const renderInsightValue = (value) => {
+  //   if (Array.isArray(value)) {
+  //     return (
+  //       <ul className="list-disc list-inside space-y-1">
+  //         {value.map((item, index) => (
+  //           <li key={index} className="text-sm text-gray-700">{item}</li>
+  //         ))}
+  //       </ul>
+  //     );
+  //   } else if (typeof value === 'object' && value !== null) {
+  //     return (
+  //       <div className="space-y-2">
+  //         {Object.entries(value).map(([subKey, subValue]) => (
+  //           <div key={subKey}>
+  //             <span className="font-medium text-gray-800 capitalize">
+  //               {subKey.replace(/_/g, ' ')}:
+  //             </span>
+  //             <div className="ml-2 mt-1">{renderInsightValue(subValue)}</div>
+  //           </div>
+  //         ))}
+  //       </div>
+  //     );
+  //   }
+  //   return <p className="text-sm text-gray-700">{value}</p>;
+  // };
+
   const renderInsightValue = (value) => {
     if (Array.isArray(value)) {
       return (
@@ -399,7 +429,55 @@ export default function MeetingDetails() {
           ))}
         </div>
       );
+    } else if (typeof value === 'string') {
+      // Handle structured summary with proper formatting
+      if (value.includes('## ') || value.includes('- ')) {
+        return (
+          <div className="prose prose-sm max-w-none">
+            {value.split('\n').map((line, index) => {
+              const trimmedLine = line.trim();
+              
+              // Handle main headings (##)
+              if (trimmedLine.startsWith('## ')) {
+                return (
+                  <h4 key={index} className="text-base font-semibold text-gray-900 mt-4 mb-2 first:mt-0">
+                    {trimmedLine.replace('## ', '')}
+                  </h4>
+                );
+              }
+              
+              // Handle bullet points (-)
+              if (trimmedLine.startsWith('- ')) {
+                return (
+                  <div key={index} className="ml-4 mb-1">
+                    <span className="inline-flex items-start">
+                      <span className="text-gray-400 mr-2 mt-1.5 flex-shrink-0">•</span>
+                      <span className="text-sm text-gray-700">{trimmedLine.replace('- ', '')}</span>
+                    </span>
+                  </div>
+                );
+              }
+              
+              // Handle empty lines
+              if (trimmedLine === '') {
+                return <div key={index} className="h-2"></div>;
+              }
+              
+              // Handle regular text
+              return (
+                <p key={index} className="text-sm text-gray-700 mb-2">
+                  {trimmedLine}
+                </p>
+              );
+            })}
+          </div>
+        );
+      }
+      
+      // For regular text without special formatting
+      return <p className="text-sm text-gray-700 whitespace-pre-wrap">{value}</p>;
     }
+    
     return <p className="text-sm text-gray-700">{value}</p>;
   };
 
